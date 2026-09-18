@@ -36,6 +36,7 @@ from coding_agent.events import (
     ToolExecutionEndEvent,
     ToolExecutionStartEvent,
     TurnEndEvent,
+    UsageEvent,
 )
 from coding_agent.gateway.transport import StdioTransport
 from coding_agent.settings import Settings
@@ -69,6 +70,23 @@ def _serialize_event(event: AgentEvent) -> dict[str, Any]:
             }
         case TurnEndEvent(reason=r):
             return {"type": "turn_end", "reason": r}
+        case UsageEvent(
+            input_tokens=i,
+            output_tokens=o,
+            total_tokens=t,
+            cache_read_tokens=c,
+            reasoning_tokens=r,
+            details=d,
+        ):
+            return {
+                "type": "usage",
+                "inputTokens": i,
+                "outputTokens": o,
+                "totalTokens": t,
+                "cacheReadTokens": c,
+                "reasoningTokens": r,
+                "details": d,
+            }
         case DoneEvent():
             return {"type": "done"}
         case ErrorEvent(message=m, recoverable=r):
