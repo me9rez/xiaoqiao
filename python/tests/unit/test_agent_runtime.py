@@ -1,13 +1,16 @@
-"""Unit tests for the tool-event middleware and tool result normalization."""
+"""Unit tests for the harness-backed agent runtime, event translation, and tools."""
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 import pytest
+from agent_framework import AgentSession
 from agent_framework._middleware import FunctionInvocationContext
 from agent_framework._tools import SKIP_PARSING, FunctionTool
 from agent_framework._types import AgentResponseUpdate, Content, UsageDetails
 
-from coding_agent.agent_runtime import dispatch_update
+from coding_agent.agent_runtime import AgentRuntime, dispatch_update
 from coding_agent.events import (
     TextDeltaEvent,
     ThinkingDeltaEvent,
@@ -16,8 +19,74 @@ from coding_agent.events import (
     ToolExecutionStartEvent,
     UsageEvent,
 )
+from coding_agent.settings import Settings
 from coding_agent.tool_events import ToolEventMiddleware, extract_tool_result
 from coding_agent.tools.coding_tools import _ToolResult
+
+
+class _StubClient:
+    """Protocol-shaped client; never actually invoked by these tests."""
+
+    additional_properties: ClassVar[dict] = {}
+
+    def get_response(self, *args: object, **kwargs: object) -> object:
+        raise NotImplementedError
+
+
+def _settings_with(context: int = 200_000, output: int = 8_000) -> Settings:
+    settings = Settings(primary_model="deepseek/test")
+    settings.providers["deepseek"]["models"] = [{"id": "test", "contextWindow": context, "maxTokens": output}]
+    return settings
+
+
+def _build_runtime(settings: Settings | None = None) -> AgentRuntime:
+    return AgentRuntime(
+        client=_StubClient(),
+        tools=[],
+        session=AgentSession(session_id="t"),
+        instructions="test",
+        on_event=lambda _event: None,
+        settings=settings,
+    )
+
+
+class TestCompactionWiring:
+    """The harness silently disables compaction unless BOTH token bounds are given.
+
+    ``_assemble_compaction`` only builds its default strategy when
+    ``max_context_window_tokens`` AND ``max_output_tokens`` are both set; passing
+    just the window leaves ``compaction_strategy`` as None. That regression is
+    invisible at runtime, so it is pinned here.
+    """
+
+    def test_compaction_strategy_is_configured(self) -> None:
+        agent = _build_runtime(_settings_with()).agent
+        assert getattr(agent, "compaction_strategy", None) is not None
+
+    def test_after_run_compaction_provider_is_wired(self) -> None:
+        agent = _build_runtime(_settings_with()).agent
+        providers = [type(c).__name__ for c in (agent.context_providers or [])]
+        assert "CompactionProvider" in providers
+
+    def test_output_bound_stays_below_context_window(self) -> None:
+        """The harness rejects max_output_tokens >= max_context_window_tokens."""
+        runtime = _build_runtime(_settings_with(context=100_000, output=8_000))
+        context, output = runtime._compaction_bounds  # type: ignore[misc]
+        assert context == 100_000
+        assert output is not None
+        assert 0 < output < context
+
+    def test_oversized_max_tokens_is_clamped(self) -> None:
+        """A misconfigured maxTokens must not disable compaction outright."""
+        runtime = _build_runtime(_settings_with(context=8_000, output=64_000))
+        context, output = runtime._compaction_bounds  # type: ignore[misc]
+        assert output is not None
+        assert 0 < output < context
+
+    def test_no_settings_leaves_compaction_unconfigured(self) -> None:
+        """Without a model config there are no bounds to apply; do not fabricate."""
+        agent = _build_runtime(None).agent
+        assert getattr(agent, "compaction_strategy", None) is None
 
 
 class TestDispatchUpdate:

@@ -13,7 +13,11 @@ dependencies = [
     "agent-framework-openai>=1.8.2",
     "agent-framework-orchestrations>=1.0.0",
     "httpx>=0.28.0",
-    "mcp>=1.21.1",
+    # agent-framework-core's MCP integration targets the mcp 1.x API (it reads
+    # `initialize_result.protocolVersion`, renamed to `protocol_version` in 2.x),
+    # so it only declares `mcp<2` under its unused `all` extra. Pin the bound here
+    # too, otherwise resolution picks mcp 2.x and every MCP server fails to connect.
+    "mcp>=1.21.1,<2",
     "websockets>=15.0",
 ]
 

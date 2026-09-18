@@ -28,17 +28,18 @@
 
 | # | 问题 | 状态 |
 |---|------|------|
-| P0-1 | 默认路径无 compaction | ✅ 由 harness 原生接管（`max_context_window_tokens`） |
+| P0-1 | 默认路径无 compaction | ✅ 已修复。**注意**：首轮实现只传了 `max_context_window_tokens`，而 harness 要求 `max_output_tokens` 同时存在才构建策略，实际仍处于关闭状态；现两者都传并有回归测试 |
 | P0-2 | `framework_session` 死管线 | ✅ 已真正使用；实测同一会话文件从 105 字节空壳变为 4205 字节含 6 条消息 |
 | P0-3 | `_ensure_not_duplicate` 空操作 | ✅ 随 `loop.py` 删除而消失 |
-| P0-4 | `_FakeClient` 协议不合规 | ✅ 真实 API 已验证，假 client 路径不再需要 |
+| P0-4 | `_FakeClient` 协议不合规 | ✅ 已补齐 `additional_properties`（`isinstance(..., SupportsChatGetResponse)` 为 True） |
+| P0-5 | **MCP 服务器全部无法连接** | ✅ 已修复。`agent-framework-core` 只在其未使用的 `all` extra 下声明 `mcp<2`，解析到 mcp 2.x 后框架读取已被重命名的 `protocolVersion` 而崩溃；已在 pyproject 固定 `mcp>=1.21.1,<2` |
 | P1-1 | 两套 loop 分叉 | ✅ 两文件均删除，thinking 解析统一在 `agent_runtime` |
 | P1-2 | `use_workflow` 默认值取反 | ✅ 分流逻辑消失 |
 | P1-3 | 网关层重复 | ✅ 编排逻辑收敛到 `TurnRunner` |
 | P2-2 | async-iterable 静默吞结果 | ✅ 改为抛 `TypeError`（`tool_events.extract_tool_result`） |
 | P3-1 | `ToolExecutionDeltaEvent` 从未发射 | ⏳ 仍未发射，待决（实现或删除） |
 | P2-1 | 私有 API 依赖 | ⏳ 未处理（阶段五） |
-| P2-3 | 测试覆盖倒挂 | ⏳ 部分改善（新增 runtime 单测），工具层仍待补 |
+| P2-3 | 测试覆盖倒挂 | ⏳ 部分改善（新增 runtime + compaction 单测），工具层仍待补 |
 | P3-2 | 无 workspace 限制 | ⏳ 未处理 |
 
 ### 0.3 真实 API 验证记录
@@ -55,6 +56,9 @@
 | 多轮上下文 | ✅ 会话累积（8 条消息），跨轮次保持 |
 | 网关 e2e | ✅ `WsGatewayServer._handle_prompt` → `_resume_approval` 全链路 |
 | 事件完整性 | ✅ text/thinking/tool_call_start/tool_execution_start/_end/usage/turn_end/done |
+| **skills 接入** | ✅ `SkillsProvider` 出现在 agent 的 `context_providers` 中 |
+| **MCP 接入** | ✅ 起真实 stdio MCP 服务器（`mcp.server.fastmcp`），模型调用 `probe_echo` 并取回 `echo:banana` |
+| **compaction 生效** | ✅ `compaction_strategy=ContextWindowCompactionStrategy` 且 `CompactionProvider` 已装配 |
 
 前端事件契约未变（`web/src/types/gateway.ts` 无需改动），web 测试 18/18 通过。
 
@@ -70,6 +74,25 @@
 - `FileSystemAgentFileStore` 带 `ExperimentalWarning`（框架标注 API 可能变动）。
 - 审批恢复时框架会打印 `Ignored an approval response ... occurrence identity` 警告。实测**审批语义正确**（通过则执行、拒绝则不执行、均只执行一次），该警告不影响行为，疑为框架内部重放检查，未深究。
 - 网关实例内的 `_runtimes` 缓存未随会话删除而清理（长跑进程会缓慢增长）。
+- `mcp<2` 为**临时约束**：`agent-framework-core` 一旦支持 mcp 2.x（`protocol_version`），应解除该上界。
+
+### 0.6 本轮修正的两个自身缺陷（复盘）
+
+首轮提交（`adacc30`）声称"compaction 已由 harness 接管"，**该声明当时不成立**：
+
+1. **compaction 实际仍关闭**。`_assemble_compaction` 仅当 `max_context_window_tokens` 与
+   `max_output_tokens` **同时**提供时才构建策略，否则静默禁用。首轮只传了前者，
+   `compaction_strategy` 为 `None`、也没有 `CompactionProvider`。现已两者都传（含
+   `maxTokens` 越界时的钳制），并加了 5 个回归测试。
+2. **MCP 完全不可用**。依赖升级把 `mcp` 提到 2.2.0，而 `agent-framework-core` 的 MCP
+   集成读取 `initialize_result.protocolVersion`（2.x 已更名为 `protocol_version`），
+   任何 MCP 服务器连接都会抛 `AttributeError`。框架只在未安装的 `all` extra 下声明
+   `mcp<2`，所以解析器不会自动兜住。已在 `pyproject.toml` 固定 `mcp<2`，并用真实
+   stdio MCP 服务器验证模型能成功调用其工具。
+
+**教训**：这两处都是"配置看起来生效、实为零效果"的静默失效——只靠"import 通过 + 单测绿"
+无法发现，必须断言到最终对象的实际属性（`agent.compaction_strategy`、
+`agent.mcp_tools` + 一次真实工具调用）。后续改动建议沿用这一断言方式。
 
 ---
 
@@ -764,3 +787,4 @@ print('compliant:', isinstance(_FakeClient(), af.SupportsChatGetResponse))
 | 2026-09-19 | 初稿，基于 `763782c` 核实现状 |
 | 2026-09-19 | 补 §6 框架原生 Harness 评估：核查 Microsoft 官方 `build_your_own_claw` 示例并对本项目 1.19.0 实测；改造主线调整为迁移至 `create_harness_agent`；新增 P0-4（`_FakeClient` 协议不合规）与阶段零 |
 | 2026-09-19 | **阶段零/一/二实施完成**：新增 §0 实施结果；`loop.py`/`workflow_loop.py` 删除，改为 `agent_runtime.py` + `tool_events.py` + `turn_runner.py`；真实 API 验证通过 |
+| 2026-09-19 | **修正两处静默失效**（§0.6）：compaction 因缺少 `max_output_tokens` 实际未启用；MCP 因 `mcp` 解析到 2.x 而完全不可用，已固定 `mcp<2` 并用真实 MCP 服务器验证 |

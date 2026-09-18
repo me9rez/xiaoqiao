@@ -253,12 +253,28 @@ class AgentRuntime:
         self._pending: dict[str, PendingApproval] = {}
 
         tool_list = [*tools, *(mcp_tools or [])]
-        max_context = None
+
+        # Compaction needs BOTH bounds: the harness only builds its default
+        # ContextWindowCompactionStrategy when max_context_window_tokens and
+        # max_output_tokens are both present, and silently disables compaction
+        # otherwise (see `_assemble_compaction`).
+        max_context: int | None = None
+        max_output: int | None = None
         if settings is not None:
             from coding_agent.settings import model_config
 
             cfg = model_config(settings, getattr(session, "model", None) or None)
-            max_context = cfg.get("contextWindow") if cfg else None
+            if cfg:
+                context_window = cfg.get("contextWindow")
+                max_tokens = cfg.get("maxTokens")
+                if isinstance(context_window, int) and context_window > 0:
+                    max_context = context_window
+                    # Keep the output bound strictly below the window, as the
+                    # harness rejects max_output_tokens >= max_context_window_tokens.
+                    if isinstance(max_tokens, int) and 0 < max_tokens < context_window:
+                        max_output = max_tokens
+                    else:
+                        max_output = max(context_window // 8, 1)
 
         # Tool lifecycle events (tool_call_start / tool_execution_start / _end) are
         # not visible in the response stream, so keep our FunctionMiddleware for them.
@@ -275,19 +291,16 @@ class AgentRuntime:
             "tools": tool_list,
             "skills_provider": skill_provider,
             "middleware": [self._tool_middleware],
-            # Compaction is on by default; give it the configured window.
-            "max_context_window_tokens": max_context,
             # The framework session owns the conversation, so our own transcript
             # is a display copy rather than a second source of truth.
             "mode_provider": AgentModeProvider(default_mode="execute"),
         }
+        if max_context is not None and max_output is not None:
+            kwargs["max_context_window_tokens"] = max_context
+            kwargs["max_output_tokens"] = max_output
 
-        try:
-            self._agent: Agent = create_harness_agent(**kwargs)
-        except TypeError:
-            # Older/newer harness builds may not accept every optional kwarg.
-            kwargs.pop("max_context_window_tokens", None)
-            self._agent = create_harness_agent(**kwargs)
+        self._agent: Agent = create_harness_agent(**kwargs)
+        self._compaction_bounds = (max_context, max_output)
 
         self._thinking_level = thinking_level
 
