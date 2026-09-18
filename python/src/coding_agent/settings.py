@@ -36,7 +36,7 @@ import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 logger = logging.getLogger(__name__)
 
@@ -267,9 +267,30 @@ def build_client(settings: Settings, model: str | None = None) -> object:
 
 
 class _FakeClient:
-    """Minimal fake for testing the event pipeline without a real LLM."""
+    """Minimal fake for exercising the event pipeline without a real LLM.
 
-    async def get_response(self, messages: list[object], *, stream: bool = True, options: object = None) -> object:
+    ``additional_properties`` is required by the ``SupportsChatGetResponse``
+    protocol; without it the framework treats the client as not tool-capable and
+    silently skips the function-invocation loop.
+    """
+
+    additional_properties: ClassVar[dict[str, Any]] = {}
+
+    async def get_response(
+        self,
+        messages: list[object],
+        *,
+        stream: bool = True,
+        options: object = None,
+        **kwargs: object,
+    ) -> object:
+        """Return a canned response.
+
+        ``**kwargs`` absorbs the extras the framework forwards to chat clients
+        (``compaction_strategy``, ``tokenizer``, ...) so the signature stays
+        compatible as the framework evolves.
+        """
+        del messages, options, kwargs
         from agent_framework._types import ChatResponse, ChatResponseUpdate, Content, Message, ResponseStream
 
         if stream:

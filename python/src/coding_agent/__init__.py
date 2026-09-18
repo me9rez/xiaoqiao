@@ -1,4 +1,4 @@
-"""Coding Agent — fine-grained agent loop + gateway for Vue TUI."""
+"""Coding Agent — harness-based agent runtime + gateway for the web UI."""
 
 from coding_agent.events import (
     AgentEvent,
@@ -6,13 +6,15 @@ from coding_agent.events import (
     ErrorEvent,
     TextDeltaEvent,
     ThinkingDeltaEvent,
+    ToolApprovalRequestEvent,
+    ToolApprovalResponseEvent,
     ToolCallStartEvent,
     ToolExecutionDeltaEvent,
     ToolExecutionEndEvent,
     ToolExecutionStartEvent,
     TurnEndEvent,
+    UsageEvent,
 )
-from coding_agent.loop import run_coding_agent
 
 __all__ = [
     "AgentEvent",
@@ -20,10 +22,12 @@ __all__ = [
     "ErrorEvent",
     "TextDeltaEvent",
     "ThinkingDeltaEvent",
+    "ToolApprovalRequestEvent",
+    "ToolApprovalResponseEvent",
     "ToolCallStartEvent",
     "ToolExecutionDeltaEvent",
     "ToolExecutionEndEvent",
     "ToolExecutionStartEvent",
     "TurnEndEvent",
-    "run_coding_agent",
+    "UsageEvent",
 ]

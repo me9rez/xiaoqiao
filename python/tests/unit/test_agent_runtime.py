@@ -1,4 +1,4 @@
-"""Unit tests for the Agent-driven event loop."""
+"""Unit tests for the tool-event middleware and tool result normalization."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ from agent_framework._middleware import FunctionInvocationContext
 from agent_framework._tools import SKIP_PARSING, FunctionTool
 from agent_framework._types import AgentResponseUpdate, Content, UsageDetails
 
+from coding_agent.agent_runtime import dispatch_update
 from coding_agent.events import (
     TextDeltaEvent,
     ThinkingDeltaEvent,
@@ -15,15 +16,17 @@ from coding_agent.events import (
     ToolExecutionStartEvent,
     UsageEvent,
 )
-from coding_agent.loop import ToolEventMiddleware, _extract_tool_result, _process_agent_update
+from coding_agent.tool_events import ToolEventMiddleware, extract_tool_result
 from coding_agent.tools.coding_tools import _ToolResult
 
 
-class TestProcessAgentUpdate:
+class TestDispatchUpdate:
+    """The harness streams AgentResponseUpdate; we translate each chunk to events."""
+
     def test_text_delta(self) -> None:
         events: list[object] = []
         update = AgentResponseUpdate(contents=[Content(type="text", text="hello")])
-        _process_agent_update(update, events.append, None)
+        dispatch_update(update, events.append, None)
         assert len(events) == 1
         assert isinstance(events[0], TextDeltaEvent)
         assert events[0].delta == "hello"
@@ -31,10 +34,18 @@ class TestProcessAgentUpdate:
     def test_thinking_delta(self) -> None:
         events: list[object] = []
         update = AgentResponseUpdate(contents=[Content(type="thinking", text="thinking...")])  # type: ignore[arg-type]
-        _process_agent_update(update, events.append, None)
+        dispatch_update(update, events.append, None)
         assert len(events) == 1
         assert isinstance(events[0], ThinkingDeltaEvent)
         assert events[0].delta == "thinking..."
+
+    def test_reasoning_content_type(self) -> None:
+        """Providers normalize reasoning onto several content type names."""
+        events: list[object] = []
+        update = AgentResponseUpdate(contents=[Content(type="reasoning", text="why")])  # type: ignore[arg-type]
+        dispatch_update(update, events.append, None)
+        assert len(events) == 1
+        assert isinstance(events[0], ThinkingDeltaEvent)
 
     def test_usage_event(self) -> None:
         events: list[object] = []
@@ -44,37 +55,56 @@ class TestProcessAgentUpdate:
             total_token_count=15,
         )
         update = AgentResponseUpdate(contents=[Content(type="usage", usage_details=usage)])
-        _process_agent_update(update, events.append, None)
+        dispatch_update(update, events.append, None)
         assert len(events) == 1
         assert isinstance(events[0], UsageEvent)
         assert events[0].input_tokens == 10
         assert events[0].output_tokens == 5
 
+    def test_approval_request_is_returned(self) -> None:
+        events: list[object] = []
+        function_call = Content(type="function_call", call_id="c1", name="place_trade", arguments="{}")
+        content = Content(type="function_approval_request", function_call=function_call)
+        update = AgentResponseUpdate(contents=[content])
+        pending = dispatch_update(update, events.append, None)
+        assert pending is not None
+        assert pending.name == "place_trade"
+        assert pending.call_id == "c1"
+
 
 class TestExtractToolResult:
     def test_tool_result_object(self) -> None:
-        text, exit_code, ok = _extract_tool_result(_ToolResult(result="output", exit_code=1, ok=False))
+        text, exit_code, ok = extract_tool_result(_ToolResult(result="output", exit_code=1, ok=False))
         assert text == "output"
         assert exit_code == 1
         assert ok is False
 
     def test_plain_string(self) -> None:
-        text, exit_code, ok = _extract_tool_result("plain result")
+        text, exit_code, ok = extract_tool_result("plain result")
         assert text == "plain result"
         assert exit_code is None
         assert ok is True
 
     def test_content_list(self) -> None:
-        text, exit_code, ok = _extract_tool_result([Content(type="text", text="content result")])
+        text, exit_code, ok = extract_tool_result([Content(type="text", text="content result")])
         assert text == "content result"
         assert exit_code is None
         assert ok is True
 
     def test_none_result(self) -> None:
-        text, exit_code, ok = _extract_tool_result(None)
+        text, exit_code, ok = extract_tool_result(None)
         assert text == ""
         assert exit_code is None
         assert ok is True
+
+    def test_async_iterable_is_rejected(self) -> None:
+        """Silently returning empty text would masquerade as a successful result."""
+
+        async def agen():
+            yield "chunk"
+
+        with pytest.raises(TypeError, match="async iterable"):
+            extract_tool_result(agen())
 
 
 class TestToolEventMiddleware:
@@ -129,3 +159,24 @@ class TestToolEventMiddleware:
             await middleware.process(context, call_next)
 
         assert any(isinstance(e, ToolExecutionEndEvent) and not e.ok for e in events)
+
+    @pytest.mark.asyncio
+    async def test_emit_sink_can_be_replaced(self) -> None:
+        """The runtime rebinds the sink per turn, so set_emit must take effect."""
+        first: list[object] = []
+        second: list[object] = []
+        middleware = ToolEventMiddleware(first.append)
+        middleware.set_emit(second.append)
+
+        async def dummy_tool() -> str:
+            return "ok"
+
+        tool = FunctionTool(name="dummy", description="", func=dummy_tool, result_parser=SKIP_PARSING)
+        context = FunctionInvocationContext(function=tool, arguments={}, metadata={"call_id": "c"})
+
+        async def call_next() -> None:
+            context.result = await tool.invoke(arguments={})
+
+        await middleware.process(context, call_next)
+        assert not first
+        assert len(second) == 3

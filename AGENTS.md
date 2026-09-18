@@ -4,7 +4,7 @@
 
 两包 monorepo，根目录无直接代码：
 
-- `python/` — agent 核心（自定义 loop + 工具 + gateway），Python 3.14+
+- `python/` — agent 核心（agent-framework harness + 工具 + gateway），Python 3.14+
 - `web/` — Web 前端（Vue + Vite），Node 22+, pnpm
 - 必须 `cd` 进对应目录再执行命令
 
@@ -28,16 +28,33 @@ uv run pytest              # 运行所有单元测试
   ```bash
   uv run pytest                          # 全部测试
   uv run pytest -v                      # 详细输出
-  uv run pytest tests/unit/test_loop.py  # 指定文件
+  uv run pytest tests/unit/test_agent_runtime.py  # 指定文件
   uv run pytest -k test_thinking         # 按名称过滤
   uv run pytest --coverage               # 覆盖率报告
   ```
 - **测试文件**：
-  - `tests/unit/test_loop.py` — 事件处理和工具中间件（`TestProcessAgentUpdate`、`TestExtractToolResult`、`TestToolEventMiddleware`）
-  - `tests/unit/test_settings.py` — 配置加载和客户端构建（`TestBuildClient`、`TestFakeClient`）
+  - `tests/unit/test_agent_runtime.py` — 事件翻译（`TestDispatchUpdate`）、工具中间件与结果规范化（`TestToolEventMiddleware`、`TestExtractToolResult`）
+  - `tests/unit/test_settings.py` — 配置加载和客户端构建（`TestBuildClient`）
   - `tests/unit/test_skills.py` — SkillsProvider 创建
   - `tests/unit/test_mcp.py` — MCP 工具创建
-  - `tests/unit/test_workflow_thinking_attach.py` — thinking 持久化回归测试
+
+### Agent 运行时
+
+agent 运行时基于 agent-framework 的 `create_harness_agent`（函数调用循环、上下文压缩、
+历史持久化、工具审批由框架提供）：
+
+- `agent_runtime.py` — `AgentRuntime`：构造 harness agent、翻译流式更新为细粒度事件、审批往返
+- `turn_runner.py` — `TurnRunner`：两会话网关共享的编排层
+- `tool_events.py` — `ToolEventMiddleware`：补齐框架流不含的工具生命周期事件
+- `events.py` — 面向 gateway/前端的事件契约
+
+框架 `AgentSession` 是对话状态的唯一权威（它维护 OpenAI 兼容 API 要求的
+`tool_call`/`tool_result` 配对）；JSONL 转录只是它的投影。
+
+**集成测试**（需真实 API key）：
+```bash
+uv run python -m coding_agent.main --test "列出当前目录文件"
+```
 
 ### 其他
 
