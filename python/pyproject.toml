@@ -24,7 +24,7 @@ coding-agent = "coding_agent.main:main"
 packages = ["src/coding_agent"]
 
 [[tool.uv.index]]
-url = "http://mirrors.aliyun.com/pypi/simple"
+url = "https://pypi.org/simple"
 default = true
 
 [tool.ruff]

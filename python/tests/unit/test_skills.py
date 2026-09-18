@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
@@ -29,7 +30,11 @@ class TestCreateSkillsProvider:
             )
 
             provider = create_skills_provider([tmp])
-            skills = await provider._source.get_skills()
+            # agent-framework >= 1.10 requires a SkillsSourceContext argument.
+            from agent_framework._skills import SkillsSourceContext
+
+            context = SkillsSourceContext(agent=cast("Any", object()))
+            skills = await provider._source.get_skills(context)
             assert len(skills) == 1
             assert skills[0].frontmatter.name == "test-skill"
 
