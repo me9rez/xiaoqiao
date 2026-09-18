@@ -395,7 +395,7 @@ async def _run_workflow(
         instructions,
         prepared_tools,
         context_providers,
-        tool_event_middleware,
+        [tool_event_middleware],
         has_mcp=bool(mcp_tools),
         base_tools=tools,
         approval_enabled=approval_enabled,
