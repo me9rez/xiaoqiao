@@ -234,22 +234,26 @@ def list_connectors() -> list[dict[str, Any]]:
 
     # Add built-in connectors
     for name, info in BUILTIN_CONNECTORS.items():
-        connectors.append({
-            "name": name,
-            "description": info["description"],
-            "installed": name in configured,
-            "type": "builtin",
-        })
+        connectors.append(
+            {
+                "name": name,
+                "description": info["description"],
+                "installed": name in configured,
+                "type": "builtin",
+            }
+        )
 
     # Add custom configured connectors (not in builtin list)
     for name, config in configured.items():
         if name not in BUILTIN_CONNECTORS:
-            connectors.append({
-                "name": name,
-                "description": config.get("description", f"MCP server: {name}"),
-                "installed": True,
-                "type": "custom",
-            })
+            connectors.append(
+                {
+                    "name": name,
+                    "description": config.get("description", f"MCP server: {name}"),
+                    "installed": True,
+                    "type": "custom",
+                }
+            )
 
     return connectors
 
@@ -272,11 +276,14 @@ def get_connector(name: str) -> dict[str, Any] | None:
     # Check builtin first
     if name in BUILTIN_CONNECTORS:
         info = BUILTIN_CONNECTORS[name]
-        config = configured.get(name, {
-            "type": info["type"],
-            "command": info.get("command", ""),
-            "args": info.get("args", "").split() if info.get("args") else [],
-        })
+        config = configured.get(
+            name,
+            {
+                "type": info["type"],
+                "command": info.get("command", ""),
+                "args": info.get("args", "").split() if info.get("args") else [],
+            },
+        )
         return {
             "name": name,
             "description": info["description"],

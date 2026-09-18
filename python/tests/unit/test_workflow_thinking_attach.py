@@ -11,6 +11,7 @@ list-of-lists where each inner list holds the thinking deltas for the
 corresponding assistant message, so the loaded transcript preserves the same
 per-bubble thinking that the live stream showed.
 """
+
 from __future__ import annotations
 
 import json

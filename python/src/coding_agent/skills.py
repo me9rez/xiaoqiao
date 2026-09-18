@@ -107,13 +107,15 @@ def list_skills() -> list[dict[str, Any]]:
             except Exception:
                 pass
 
-            skills.append({
-                "name": skill_name,
-                "source": _get_skill_source(skill_file.parent),
-                "description": _extract_description(content),
-                "enabled": enabled,
-                "path": str(skill_file.parent),
-            })
+            skills.append(
+                {
+                    "name": skill_name,
+                    "source": _get_skill_source(skill_file.parent),
+                    "description": _extract_description(content),
+                    "enabled": enabled,
+                    "path": str(skill_file.parent),
+                }
+            )
 
     return skills
 
@@ -153,18 +155,22 @@ def _build_file_tree(directory: Path, base_path: Path) -> list[dict[str, Any]]:
             rel_path = item.relative_to(base_path)
             if item.is_dir():
                 children = _build_file_tree(item, base_path)
-                items.append({
-                    "name": item.name,
-                    "type": "directory",
-                    "path": str(rel_path),
-                    "children": children,
-                })
+                items.append(
+                    {
+                        "name": item.name,
+                        "type": "directory",
+                        "path": str(rel_path),
+                        "children": children,
+                    }
+                )
             else:
-                items.append({
-                    "name": item.name,
-                    "type": "file",
-                    "path": str(rel_path),
-                })
+                items.append(
+                    {
+                        "name": item.name,
+                        "type": "file",
+                        "path": str(rel_path),
+                    }
+                )
     except PermissionError:
         pass
     return items

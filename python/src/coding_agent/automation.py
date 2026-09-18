@@ -29,7 +29,7 @@ def _load_json(path: Path) -> list[dict[str, Any]]:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
         return data if isinstance(data, list) else []
-    except (json.JSONDecodeError, OSError):
+    except json.JSONDecodeError, OSError:
         return []
 
 
@@ -46,6 +46,7 @@ def _now_iso() -> str:
 # ---------------------------------------------------------------------------
 # Scheduled Task
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class ScheduledTask:
@@ -191,6 +192,7 @@ def toggle_scheduled_task(task_id: str, enabled: bool) -> ScheduledTask | None:
 # ---------------------------------------------------------------------------
 # Event Listener
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class EventListener:

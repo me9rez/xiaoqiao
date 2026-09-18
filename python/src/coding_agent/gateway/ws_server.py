@@ -306,9 +306,7 @@ class WsGatewayServer:
                     text = params.get("text", "")
                     session_id = params.get("sessionId", "")
                     logger.info("← prompt (session=%s, text=%.80s)", session_id, text)
-                    self._current_tasks[session_id] = asyncio.create_task(
-                        self._handle_prompt(text, session_id)
-                    )
+                    self._current_tasks[session_id] = asyncio.create_task(self._handle_prompt(text, session_id))
                 elif method == "cancel":
                     session_id = params.get("sessionId", "")
                     if session_id and session_id in self._current_tasks:
