@@ -6,8 +6,8 @@ and writes newline-delimited JSON events to stdout.
 
 Event flow:
     TUI → ``{"method":"prompt","params":{"text":"..."}}``
-        → GatewayServer dispatches ``run_coding_agent()``
-        → loop emits ``TextDeltaEvent``, ``ThinkingDeltaEvent`` etc.
+        → GatewayServer delegates to ``TurnRunner`` / ``AgentRuntime``
+        → runtime emits ``TextDeltaEvent``, ``ThinkingDeltaEvent`` etc.
         → gateway serialises each event as ``{"type":"text_delta","delta":"..."}``
         → TUI reads, renders
 
