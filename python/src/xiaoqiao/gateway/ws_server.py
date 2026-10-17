@@ -10,6 +10,7 @@ import asyncio
 import json
 import logging
 import sys
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -18,6 +19,7 @@ from websockets.asyncio.server import ServerConnection, serve
 
 from xiaoqiao.agent_runtime import AgentRuntime, PendingApproval
 from xiaoqiao.bots import BotRepository, LastBotError, bot_to_dict
+from xiaoqiao.channels.telegram import TelegramAdapter
 from xiaoqiao.events import (
     AgentEvent,
     DoneEvent,
@@ -243,6 +245,7 @@ class WsGatewayServer:
         self._memory = MemoryRepository()
         self._artifacts = ArtifactRepository()
         self._channels = ChannelRepository()
+        self._adapters: dict[str, TelegramAdapter] = {}
         self._session: Any = None
         self._ws: ServerConnection | None = None
         self._emit_tasks: list[asyncio.Task[None]] = []
@@ -1115,6 +1118,91 @@ class WsGatewayServer:
                 return str(getattr(message, "text", ""))
         return ""
 
+    # ── channels ─────────────────────────────────────────────────
+
+    async def _start_channels(self) -> None:
+        started = 0
+        for channel in self._channels.list(enabled_only=True):
+            if channel.kind != "telegram":
+                continue
+            token = str(channel.config.get("token") or "")
+            if not token:
+                logger.warning("Channel %s has no token; skipping", channel.id)
+                continue
+            adapter = TelegramAdapter(
+                channel_id=channel.id,
+                bot_id=channel.bot_id,
+                token=token,
+                on_message=lambda inbound, current=channel: self._on_channel_message(current, inbound),
+                on_approval=self._on_channel_approval,
+            )
+            await adapter.start()
+            self._adapters[channel.id] = adapter
+            started += 1
+        logger.info("Started %d channel adapter(s)", started)
+
+    def _telegram_for_group(self, group_id: str) -> tuple[Any, TelegramAdapter] | None:
+        for channel in self._channels.list(enabled_only=True):
+            if channel.kind != "telegram":
+                continue
+            if str(channel.config.get("groupId") or "") != group_id:
+                continue
+            adapter = self._adapters.get(channel.id)
+            if adapter is not None:
+                return channel, adapter
+        return None
+
+    def _notify_for_group(self, group_id: str) -> Callable[[Any], Awaitable[None]] | None:
+        target = self._telegram_for_group(group_id)
+        if target is None:
+            return None
+        channel, adapter = target
+        chat_id = str(channel.config.get("chatId") or "")
+        if not chat_id:
+            return None
+
+        async def notify(message: Any) -> None:
+            await adapter.send_text(chat_id, str(message.text))
+
+        return notify
+
+    async def _on_channel_message(self, channel: Any, inbound: Any) -> None:
+        group_id = str(channel.config.get("groupId") or "")
+        if not group_id:
+            logger.warning("Channel %s is not bound to a group; message ignored", channel.id)
+            return
+        expected_chat = str(channel.config.get("chatId") or "")
+        if expected_chat and expected_chat != inbound.external_chat_id:
+            logger.warning("Channel %s received a message from an unexpected chat", channel.id)
+            return
+        if self._groups.get(group_id) is None:
+            logger.warning("Channel %s targets a missing group %s", channel.id, group_id)
+            return
+        adapter = self._adapters.get(channel.id)
+
+        async def notify(message: Any) -> None:
+            if adapter is not None:
+                await adapter.send_text(inbound.external_chat_id, str(message.text))
+
+        await self._handle_group_prompt(group_id, inbound.text, notify=notify)
+
+    async def _on_channel_approval(
+        self,
+        approval_id: str,
+        approved: bool,
+        user_id: str,
+        chat_id: str,
+    ) -> None:
+        approval, reason = self._approvals.resolve(approval_id=approval_id, approved=approved)
+        if reason != "ok":
+            logger.warning("Telegram approval %s rejected: %s", approval_id, reason)
+            return
+        self._broadcast_approval_resolved(approval)
+        if approval is not None and approval.call_id in self._pending_approvals:
+            task = asyncio.create_task(self._resume_approval(approval.call_id, approved))
+            self._emit_tasks.append(task)
+            task.add_done_callback(self._emit_tasks.remove)
+
     async def _fire_routine(self, routine: Any, scheduled_at: str) -> None:
         self._broadcast(
             {
@@ -1131,9 +1219,16 @@ class WsGatewayServer:
         if self._groups.get(routine.target_group_id) is None:
             logger.warning("Routine %s targets a missing group %s", routine.id, routine.target_group_id)
             return
-        await self._handle_group_prompt(routine.target_group_id, routine.prompt)
+        notify = self._notify_for_group(routine.target_group_id)
+        await self._handle_group_prompt(routine.target_group_id, routine.prompt, notify=notify)
 
-    async def _handle_group_prompt(self, group_id: str, text: str) -> None:
+    async def _handle_group_prompt(
+        self,
+        group_id: str,
+        text: str,
+        *,
+        notify: Callable[[Any], Awaitable[None]] | None = None,
+    ) -> None:
         chat = GroupChatService(self._bots, self._groups, self._sessions_db, self._group_messages)
 
         async def execute(bot: Any, session: Any, messages: list[Any]) -> str:
@@ -1143,6 +1238,11 @@ class WsGatewayServer:
             appended = await chat.handle_user_message(group_id, text, execute)
             for message in appended:
                 self._emit_group_message(group_id, message)
+                if notify is not None and message.author_type == "bot":
+                    try:
+                        await notify(message)
+                    except Exception:
+                        logger.exception("Channel delivery failed for group %s", group_id)
         except asyncio.CancelledError:
             logger.info("Group prompt cancelled: %s", group_id)
         except Exception as exc:
@@ -1245,6 +1345,21 @@ class WsGatewayServer:
                 "expiresAt": approval.expires_at,
             }
         )
+        target = self._telegram_for_group(group_id) if group_id else None
+        if target is not None:
+            channel, adapter = target
+            chat_id = str(channel.config.get("chatId") or "")
+            if chat_id:
+                task = asyncio.create_task(
+                    adapter.send_approval(
+                        chat_id,
+                        approval_id=approval.id,
+                        tool=pending.name,
+                        arguments=pending.arguments,
+                    )
+                )
+                self._emit_tasks.append(task)
+                task.add_done_callback(self._emit_tasks.remove)
         return approval
 
     def _broadcast_approval_resolved(self, approval: Any) -> None:
@@ -1351,6 +1466,7 @@ class WsGatewayServer:
         ctx = discover_project_context()
         logger.info("WS gateway starting — OS: %s, shell: %s", ctx.os_name, ctx.shell)
         await self._scheduler.start()
+        await self._start_channels()
         async with serve(self._handle_ws, self._host, self._port):
             logger.info("WS gateway on ws://%s:%d", self._host, self._port)
             print(f"WS READY ws://{self._host}:{self._port}", file=sys.stderr, flush=True)

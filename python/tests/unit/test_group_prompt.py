@@ -106,3 +106,79 @@ class TestGroupPromptWiring:
         assert [m.text for m in messages] == ["@watch 查行情", "@coder 整理一下", "整理完了"]
         sessions = server._sessions_db.list(group_id=group.id)
         assert len(sessions) == 2
+
+
+class FakeAdapter:
+    def __init__(self) -> None:
+        self.sent: list[tuple[str, str]] = []
+
+    async def send_text(self, chat_id: str, text: str) -> None:
+        self.sent.append((chat_id, text))
+
+
+class TestChannelRouting:
+    @pytest.mark.asyncio
+    async def test_inbound_message_runs_group_and_replies(self, server: WsGatewayServer) -> None:
+        coder = server._bots.create("Coder", slug="coder")
+        group = server._groups.create("Daily", [coder.id])
+        channel = server._channels.create(
+            coder.id,
+            "telegram",
+            {"token": "T", "groupId": group.id, "chatId": "42"},
+        )
+        adapter = FakeAdapter()
+        server._adapters[channel.id] = adapter  # type: ignore[assignment]
+
+        async def fake_execute(bot, session, messages, group_id) -> str:
+            return "收到"
+
+        server._execute_group_bot = fake_execute  # type: ignore[method-assign]
+
+        from xiaoqiao.channels.base import InboundMessage
+
+        inbound = InboundMessage(
+            bot_id=coder.id,
+            channel_id=channel.id,
+            external_chat_id="42",
+            external_user_id="7",
+            text="@coder 你好",
+        )
+        await server._on_channel_message(channel, inbound)
+
+        assert [m.text for m in server._group_messages.list(group.id)] == ["@coder 你好", "收到"]
+        assert adapter.sent == [("42", "收到")]
+
+    @pytest.mark.asyncio
+    async def test_ignores_unexpected_chat(self, server: WsGatewayServer) -> None:
+        coder = server._bots.create("Coder", slug="coder")
+        group = server._groups.create("Daily", [coder.id])
+        channel = server._channels.create(
+            coder.id,
+            "telegram",
+            {"token": "T", "groupId": group.id, "chatId": "42"},
+        )
+
+        from xiaoqiao.channels.base import InboundMessage
+
+        inbound = InboundMessage(
+            bot_id=coder.id,
+            channel_id=channel.id,
+            external_chat_id="999",
+            external_user_id="7",
+            text="hi",
+        )
+        await server._on_channel_message(channel, inbound)
+
+        assert server._group_messages.list(group.id) == []
+
+    @pytest.mark.asyncio
+    async def test_approval_callback_resolves(self, server: WsGatewayServer) -> None:
+        coder = server._bots.create("Coder", slug="coder")
+        run_id = server._approvals.create_run(coder.id)
+        approval = server._approvals.create(run_id, "call_1", coder.id, "run_command", "{}")
+
+        await server._on_channel_approval(approval.id, True, "7", "42")
+
+        resolved = server._approvals.get(approval.id)
+        assert resolved is not None
+        assert resolved.status == "approved"
