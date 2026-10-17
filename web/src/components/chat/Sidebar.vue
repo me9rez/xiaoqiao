@@ -16,11 +16,14 @@ import {
 } from '@lucide/vue'
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
+import GroupEditorModal from '@/components/groups/GroupEditorModal.vue'
+import GroupList from '@/components/groups/GroupList.vue'
 import { gatewayService } from '@/services/gateway'
 import { useBotsStore } from '@/stores/bots'
 import { useChatStore } from '@/stores/chat'
 import { useSessionsStore } from '@/stores/sessions'
 import { useWorkspaceStore } from '@/stores/workspace'
+import type { Group } from '@/types/group'
 
 const chatStore = useChatStore()
 const sessionsStore = useSessionsStore()
@@ -49,6 +52,18 @@ const editingTitle = ref('')
 const renameInputRef = ref<HTMLInputElement | null>(null)
 const creating = ref(false)
 const projectExpanded = ref(true)
+const groupEditorOpen = ref(false)
+const editingGroup = ref<Group | null>(null)
+
+function openGroupEditor(group: Group | null) {
+  editingGroup.value = group
+  groupEditorOpen.value = true
+}
+
+function closeGroupEditor() {
+  groupEditorOpen.value = false
+  editingGroup.value = null
+}
 
 const contextMenu = ref<{
   show: boolean
@@ -210,6 +225,8 @@ function handleRenameKeydown(sessionId: string, event: KeyboardEvent) {
       </RouterLink>
     </nav>
 
+    <GroupList @create="openGroupEditor(null)" @edit="openGroupEditor" />
+
     <div class="px-3 py-2">
       <div class="flex items-center gap-1.5 px-2 py-2 text-xs font-bold text-[var(--text-subtle)]">
         <Layout class="w-3.5 h-3.5" />
@@ -342,6 +359,8 @@ function handleRenameKeydown(sessionId: string, event: KeyboardEvent) {
         </button>
       </div>
     </div>
+
+    <GroupEditorModal :open="groupEditorOpen" :group="editingGroup" @close="closeGroupEditor" />
 
     <Teleport to="body">
       <div

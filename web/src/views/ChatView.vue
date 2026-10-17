@@ -9,11 +9,13 @@ import ContextPanel from '@/components/chat/ContextPanel.vue'
 import Sidebar from '@/components/chat/Sidebar.vue'
 import { gatewayService } from '@/services/gateway'
 import { useBotsStore } from '@/stores/bots'
+import { useGroupsStore } from '@/stores/groups'
 import { useSessionsStore } from '@/stores/sessions'
 import type { Bot } from '@/types/bot'
 
 const sessionsStore = useSessionsStore()
 const botsStore = useBotsStore()
+const groupsStore = useGroupsStore()
 const route = useRoute()
 
 const editorOpen = ref(false)
@@ -35,11 +37,14 @@ function handleBotSaved() {
 }
 
 onMounted(() => {
+  groupsStore.listen()
   if (gatewayService.isConnected()) {
     void botsStore.load()
+    void groupsStore.load()
   }
   unsubscribe = gatewayService.on('open', () => {
     void botsStore.load()
+    void groupsStore.load()
   })
 })
 
@@ -66,6 +71,10 @@ const activeSessionId = computed<string | null>(() => {
 // Each session gets a stable, unique cache key so keep-alive can hold a
 // separate instance per session. The home view uses the literal 'home' key.
 const keepAliveKey = computed(() => {
+  const groupId = route.params.groupId
+  if (typeof groupId === 'string' && groupId.length > 0) {
+    return `group:${groupId}`
+  }
   if (activeSessionId.value) {
     return `session:${activeSessionId.value}`
   }

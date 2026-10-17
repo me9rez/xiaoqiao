@@ -143,6 +143,10 @@ export class GatewayService {
     this.send(JSON.stringify({ method: 'prompt', params }))
   }
 
+  sendGroupMessage(groupId: string, text: string): void {
+    this.send(JSON.stringify({ method: 'prompt', params: { groupId, text } }))
+  }
+
   sendApprovalResponse(callId: string, approved: boolean, remember = false): void {
     this.send(
       JSON.stringify({

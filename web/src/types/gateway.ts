@@ -76,6 +76,25 @@ export interface ToolApprovalResponseEvent extends GatewayEvent {
   approved: boolean
 }
 
+export interface GroupMessagePayload {
+  id: string
+  groupId: string
+  seq: number
+  authorType: 'user' | 'bot' | 'system'
+  authorId: string
+  text: string
+  mentions: string[]
+  replyTo: string | null
+  runId: string | null
+  createdAt: string
+}
+
+export interface GroupMessageCreatedEvent extends GatewayEvent {
+  type: 'group_message_created'
+  groupId: string
+  message: GroupMessagePayload
+}
+
 export interface WorkspaceInfo {
   name: string
   path: string
@@ -111,6 +130,7 @@ export type AgentEvent =
   | ToolApprovalResponseEvent
   | ReadyEvent
   | RpcResponseEvent
+  | GroupMessageCreatedEvent
 
 export function isTextDeltaEvent(event: GatewayEvent): event is TextDeltaEvent {
   return event.type === 'text_delta'
@@ -154,6 +174,10 @@ export function isReadyEvent(event: GatewayEvent): event is ReadyEvent {
 
 export function isRpcResponseEvent(event: GatewayEvent): event is RpcResponseEvent {
   return event.type === 'rpc_response'
+}
+
+export function isGroupMessageCreatedEvent(event: GatewayEvent): event is GroupMessageCreatedEvent {
+  return event.type === 'group_message_created'
 }
 
 export function isToolApprovalRequestEvent(event: GatewayEvent): event is ToolApprovalRequestEvent {

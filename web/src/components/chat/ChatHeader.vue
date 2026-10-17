@@ -3,10 +3,12 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { gatewayService } from '@/services/gateway'
 import { useBotsStore } from '@/stores/bots'
+import { useGroupsStore } from '@/stores/groups'
 import { useSessionsStore } from '@/stores/sessions'
 
 const sessionsStore = useSessionsStore()
 const botsStore = useBotsStore()
+const groupsStore = useGroupsStore()
 const route = useRoute()
 const connected = ref(gatewayService.isConnected())
 
@@ -29,6 +31,10 @@ onUnmounted(() => {
 })
 
 const currentTitle = computed(() => {
+  const groupId = route.params.groupId
+  if (typeof groupId === 'string' && groupId.length > 0) {
+    return groupsStore.groups.find((group) => group.id === groupId)?.name || '群聊'
+  }
   const id = route.params.sessionId
   if (typeof id !== 'string' || id.length === 0) return botsStore.activeBot?.name || '小巧'
   const session = sessionsStore.sessions.find((s) => s.id === id)

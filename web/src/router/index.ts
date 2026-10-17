@@ -24,6 +24,13 @@ const router = createRouter({
           props: true,
           meta: { keepAliveKey: 'session' },
         },
+        {
+          path: 'g/:groupId',
+          name: 'group',
+          component: () => import('../views/groups/GroupView.vue'),
+          props: true,
+          meta: { keepAliveKey: 'group' },
+        },
       ],
     },
     {
