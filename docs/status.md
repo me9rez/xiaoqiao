@@ -26,7 +26,7 @@
 | M2 群聊 + 主动性 | 建群拉 3 Bot、`@` 应答、交接 ≤3 跳、9:00 日报进群、Bot 审批被拒 | ✅（调度 20s tick + `routine_fires` 去重 + 补跑） |
 | M3 渠道 | Telegram 群多 Bot 互 @、收文件、按钮审批 | ✅（长轮询、4096 分片、sendDocument、callback → broker） |
 | M4 记忆 + 交付 | 跨会话记得偏好、产物可预览可发送 | ✅（facts + FTS + 会话摘要；产物托盘 + 绑定频道自动发送） |
-| M5 加固 | CI 绿、预算与限流生效、备份可恢复 | ✅（`.github/workflows/ci.yml` 已配置，其 Python/Web 步骤与本地验证命令一致且全绿；**尚未在 GitHub 侧实际触发**。token/美元双阈值预算门禁 + 每分钟请求限流；`runtime/backup.py` 备份 agent.db/settings/sessions 并支持校验，沙箱后置） |
+| M5 加固 | CI 绿、预算与限流生效、备份可恢复 | ✅（`.github/workflows/ci.yml` 在 GitHub Actions 上**实际通过**：python 与 web 双 job 全绿，含 lint/format/pyright/pytest/type-check/vitest/build。token/美元双阈值预算门禁 + 每分钟请求限流；`runtime/backup.py` 备份 agent.db/settings/sessions 并支持校验，沙箱后置） |
 
 ---
 
@@ -81,6 +81,6 @@ misc:      listTools / previewPrompt / prompt / cancel / listSessions / ...
 | Web 单测 | `pnpm test:unit --run` | **59 passed** |
 | Web 类型 / 构建 | `pnpm type-check` / `pnpm build` | 通过 |
 | 打包 | `uv build` | `xiaoqiao-0.1.0-py3-none-any.whl` |
-| CI | `.github/workflows/ci.yml` | 已配置（YAML 校验通过，步骤与本地命令一致；未在 GitHub 侧运行） |
+| CI | `.github/workflows/ci.yml` | **GitHub Actions 双 job 全绿**（run [39058498974](https://github.com/me9rez/xiaoqiao/actions/runs/39058498974)：python = lint + format + pyright + pytest，web = type-check + vitest + build，均在 ubuntu-latest 上） |
 
-> 环境注意：宿主机 `NO_PROXY` 含裸 IPv6 `[::1]` 时，`httpx2` 解析代理会抛 `InvalidURL`，导致 `test_settings.py` 的一个用例失败。这是环境既有问题（升级前后一致），清空代理变量后 187 项全通过。
+> 环境注意：宿主机 `NO_PROXY` 含裸 IPv6 `[::1]` 时，`httpx2` 解析代理会抛 `InvalidURL`，导致 `test_settings.py` 的一个用例失败。这是环境既有问题（升级前后一致），清空代理变量后 192 项全通过。CI 的 runner 无此变量，因此不受影响。
