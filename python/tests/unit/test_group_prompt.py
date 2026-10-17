@@ -119,6 +119,17 @@ class FakeAdapter:
 
 
 class TestRunRecords:
+    def test_budget_gate_blocks_when_exceeded(self, server: WsGatewayServer) -> None:
+        coder = server._bots.create("Coder", slug="coder")
+        server._settings = Settings(daily_token_budget=100)
+        server._usage.record(coder.id, "m", input_tokens=200)
+
+        assert server._budget_error() is not None
+
+        server._usage.record(coder.id, "m", input_tokens=1)
+        server._settings = Settings(daily_token_budget=10_000)
+        assert server._budget_error() is None
+
     def test_session_memory_is_recorded(self, server: WsGatewayServer) -> None:
         coder = server._bots.create("Coder", slug="coder")
         messages = [

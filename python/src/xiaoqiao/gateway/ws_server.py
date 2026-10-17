@@ -11,7 +11,7 @@ import json
 import logging
 import sys
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -53,6 +53,7 @@ from xiaoqiao.runtime.routines import RoutineRepository, routine_to_dict
 from xiaoqiao.runtime.runs import RunRepository
 from xiaoqiao.runtime.session_memory import format_note, summarize_session
 from xiaoqiao.runtime.sessions import SessionRepository
+from xiaoqiao.runtime.usage import UsageRepository, budget_exceeded
 from xiaoqiao.scheduler import Scheduler
 from xiaoqiao.session import (
     create_session,
@@ -249,6 +250,7 @@ class WsGatewayServer:
         self._channels = ChannelRepository()
         self._adapters: dict[str, TelegramAdapter] = {}
         self._runs = RunRepository()
+        self._usage = UsageRepository()
         self._session: Any = None
         self._ws: ServerConnection | None = None
         self._emit_tasks: list[asyncio.Task[None]] = []
@@ -616,6 +618,35 @@ class WsGatewayServer:
                             self._send_rpc_response(request_id, routine_to_dict(routine))
                     except Exception as exc:
                         logger.exception("toggleRoutine failed")
+                        self._send_rpc_error(request_id, str(exc))
+                elif method == "usageSummary":
+                    try:
+                        bot_id = params.get("botId") or None
+                        days = int(params.get("days", 1) or 1)
+                        since = datetime.now(UTC) - timedelta(days=days) if days > 1 else None
+                        today = self._usage.today(bot_id=bot_id)
+                        window = self._usage.summary(since=since, bot_id=bot_id)
+                        self._send_rpc_response(
+                            request_id,
+                            {
+                                "today": {
+                                    "inputTokens": today.input_tokens,
+                                    "outputTokens": today.output_tokens,
+                                    "totalTokens": today.total_tokens,
+                                    "costUsd": today.cost_usd,
+                                    "runs": today.runs,
+                                },
+                                "window": {
+                                    "inputTokens": window.input_tokens,
+                                    "outputTokens": window.output_tokens,
+                                    "totalTokens": window.total_tokens,
+                                    "costUsd": window.cost_usd,
+                                    "runs": window.runs,
+                                },
+                            },
+                        )
+                    except Exception as exc:
+                        logger.exception("usageSummary failed")
                         self._send_rpc_error(request_id, str(exc))
                 elif method == "listTools":
                     try:
@@ -1087,6 +1118,12 @@ class WsGatewayServer:
             return
         default_model = bot.model or primary_model
 
+        budget_reason = self._budget_error()
+        if budget_reason is not None:
+            self._emit(ErrorEvent(message=budget_reason, recoverable=False))
+            self._emit(DoneEvent())
+            return
+
         existing = load_session(session_id) if session_id else None
         if existing:
             session = existing
@@ -1129,6 +1166,13 @@ class WsGatewayServer:
                 session.total_tokens += event.total_tokens
                 session.cache_read_tokens += event.cache_read_tokens
                 session.reasoning_tokens += event.reasoning_tokens
+                self._usage.record(
+                    bot.id,
+                    session_model,
+                    run_id=run_id,
+                    input_tokens=event.input_tokens,
+                    output_tokens=event.output_tokens,
+                )
             self._emit(event, session_id=session.id, run_id=run_id)
 
         try:
@@ -1160,6 +1204,8 @@ class WsGatewayServer:
                     "session": session,
                     "approval_id": approval.id,
                     "run_id": run_id,
+                    "bot_id": bot.id,
+                    "model": session_model,
                 }
                 self._remember_runtime(session, runtime)
                 save_session(session)
@@ -1194,6 +1240,22 @@ class WsGatewayServer:
             self._session = session
             save_session(session)
             self._record_session_memory(bot.id, session.id, session.messages)
+
+    def _budget_error(self) -> str | None:
+        """Return a reason when today's usage is already over the configured budget."""
+        settings = self._settings if isinstance(self._settings, Settings) else None
+        if settings is None:
+            return None
+        token_budget = int(getattr(settings, "daily_token_budget", 0) or 0)
+        usd_budget = float(getattr(settings, "daily_budget_usd", 0.0) or 0.0)
+        if token_budget <= 0 and usd_budget <= 0:
+            return None
+        try:
+            today = self._usage.today()
+        except Exception:
+            logger.exception("Usage lookup failed")
+            return None
+        return budget_exceeded(today, token_budget=token_budget, usd_budget=usd_budget)
 
     def _record_session_memory(self, bot_id: str, session_id: str, messages: list[Any]) -> None:
         """Roll the session's recent asks into one memory note (best effort)."""
@@ -1392,6 +1454,9 @@ class WsGatewayServer:
         settings = self._settings if isinstance(self._settings, Settings) else None
         primary_model = getattr(settings, "primary_model", "") if settings else ""
         session_model = session.model or bot.model or primary_model
+        budget_reason = self._budget_error()
+        if budget_reason is not None:
+            raise ValueError(budget_reason)
         names = {item.id: item.name for item in self._bots.list()}
         prompt_block = render_group_context(bot, messages, names)
         ctx = discover_project_context(bot.workspace or None)
@@ -1419,6 +1484,14 @@ class WsGatewayServer:
         )
 
         def _on_event(event: AgentEvent) -> None:
+            if isinstance(event, UsageEvent):
+                self._usage.record(
+                    bot.id,
+                    session_model,
+                    run_id=run_id,
+                    input_tokens=event.input_tokens,
+                    output_tokens=event.output_tokens,
+                )
             self._emit(event, session_id=session.id, group_id=group_id, run_id=run_id)
 
         runtime = self._runtime_for(
@@ -1449,6 +1522,8 @@ class WsGatewayServer:
                 "group_id": group_id,
                 "approval_id": approval.id,
                 "run_id": run_id,
+                "bot_id": bot.id,
+                "model": session_model,
             }
             return "（需要你审批后才能继续）"
         self._runs.finish(run_id, "done")
@@ -1578,14 +1653,25 @@ class WsGatewayServer:
         session = info["session"]
         group_id = info.get("group_id", "")
         run_id = info.get("run_id", "")
+        bot_id = info.get("bot_id", "")
+        model = info.get("model", "")
 
         def _on_event(event: AgentEvent) -> None:
-            if isinstance(event, UsageEvent) and hasattr(session, "input_tokens"):
-                session.input_tokens += event.input_tokens
-                session.output_tokens += event.output_tokens
-                session.total_tokens += event.total_tokens
-                session.cache_read_tokens += event.cache_read_tokens
-                session.reasoning_tokens += event.reasoning_tokens
+            if isinstance(event, UsageEvent):
+                if hasattr(session, "input_tokens"):
+                    session.input_tokens += event.input_tokens
+                    session.output_tokens += event.output_tokens
+                    session.total_tokens += event.total_tokens
+                    session.cache_read_tokens += event.cache_read_tokens
+                    session.reasoning_tokens += event.reasoning_tokens
+                if bot_id:
+                    self._usage.record(
+                        bot_id,
+                        model,
+                        run_id=run_id,
+                        input_tokens=event.input_tokens,
+                        output_tokens=event.output_tokens,
+                    )
             self._emit(event, session_id=session.id, group_id=group_id, run_id=run_id)
 
         try:
