@@ -10,7 +10,7 @@ from xiaoqiao.runtime.approvals import Approval, ApprovalBroker, approval_to_dic
 from xiaoqiao.runtime.bus import EventBus, RuntimeEvent
 from xiaoqiao.runtime.group_chat import GroupChatService
 from xiaoqiao.runtime.group_messages import GroupMessage, GroupMessageRepository
-from xiaoqiao.runtime.runs import RunManager, RunRequest, RunResult
+from xiaoqiao.runtime.runs import RunManager, RunRepository, RunRequest, RunResult
 from xiaoqiao.runtime.sessions import SessionRecord, SessionRepository
 
 __all__ = [
@@ -21,6 +21,7 @@ __all__ = [
     "GroupMessage",
     "GroupMessageRepository",
     "RunManager",
+    "RunRepository",
     "RunRequest",
     "RunResult",
     "RuntimeEvent",

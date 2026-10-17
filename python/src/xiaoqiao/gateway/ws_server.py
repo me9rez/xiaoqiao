@@ -50,6 +50,7 @@ from xiaoqiao.runtime.group_chat import GroupChatService, render_group_context
 from xiaoqiao.runtime.group_messages import GroupMessageRepository, message_to_dict
 from xiaoqiao.runtime.memory import MemoryRepository, fact_to_dict, note_to_dict
 from xiaoqiao.runtime.routines import RoutineRepository, routine_to_dict
+from xiaoqiao.runtime.runs import RunRepository
 from xiaoqiao.runtime.sessions import SessionRepository
 from xiaoqiao.scheduler import Scheduler
 from xiaoqiao.session import (
@@ -246,6 +247,7 @@ class WsGatewayServer:
         self._artifacts = ArtifactRepository()
         self._channels = ChannelRepository()
         self._adapters: dict[str, TelegramAdapter] = {}
+        self._runs = RunRepository()
         self._session: Any = None
         self._ws: ServerConnection | None = None
         self._emit_tasks: list[asyncio.Task[None]] = []
@@ -274,12 +276,20 @@ class WsGatewayServer:
         path = ctx.cwd or str(Path.cwd().resolve())
         return {"name": Path(path).name, "path": path}
 
-    def _emit(self, event: AgentEvent, session_id: str = "", group_id: str = "") -> None:
+    def _emit(
+        self,
+        event: AgentEvent,
+        session_id: str = "",
+        group_id: str = "",
+        run_id: str = "",
+    ) -> None:
         obj = _serialize_event(event)
         if session_id:
             obj["sessionId"] = session_id
         if group_id:
             obj["groupId"] = group_id
+        if run_id:
+            obj["runId"] = run_id
         if obj.get("type") not in ("text_delta", "thinking_delta", "tool_execution_delta"):
             fields = _summarize_event(obj)
             print(f"→ {obj.get('type', '?')} {fields}", file=sys.stderr, flush=True)
@@ -605,6 +615,57 @@ class WsGatewayServer:
                             self._send_rpc_response(request_id, routine_to_dict(routine))
                     except Exception as exc:
                         logger.exception("toggleRoutine failed")
+                        self._send_rpc_error(request_id, str(exc))
+                elif method == "listRuns":
+                    try:
+                        items = self._runs.list(
+                            bot_id=params.get("botId") or None,
+                            group_id=params.get("groupId") or None,
+                            status=params.get("status") or None,
+                            limit=int(params.get("limit", 50)),
+                        )
+                        self._send_rpc_response(
+                            request_id,
+                            [
+                                {
+                                    "id": item.id,
+                                    "botId": item.bot_id,
+                                    "sessionId": item.session_id,
+                                    "groupId": item.group_id,
+                                    "trigger": item.trigger,
+                                    "status": item.status,
+                                    "hop": item.hop,
+                                    "error": item.error,
+                                    "createdAt": item.created_at,
+                                }
+                                for item in items
+                            ],
+                        )
+                    except Exception as exc:
+                        logger.exception("listRuns failed")
+                        self._send_rpc_error(request_id, str(exc))
+                elif method == "getRun":
+                    try:
+                        run = self._runs.get(params.get("runId", ""))
+                        if run is None:
+                            self._send_rpc_error(request_id, "Run not found")
+                        else:
+                            self._send_rpc_response(
+                                request_id,
+                                {
+                                    "id": run.id,
+                                    "botId": run.bot_id,
+                                    "sessionId": run.session_id,
+                                    "groupId": run.group_id,
+                                    "trigger": run.trigger,
+                                    "status": run.status,
+                                    "hop": run.hop,
+                                    "error": run.error,
+                                    "createdAt": run.created_at,
+                                },
+                            )
+                    except Exception as exc:
+                        logger.exception("getRun failed")
                         self._send_rpc_error(request_id, str(exc))
                 elif method == "listChannels":
                     try:
@@ -1039,6 +1100,7 @@ class WsGatewayServer:
 
         error_occurred = False
         approval_enabled = bool(getattr(settings, "tool_approval", {}).get("enabled", True))
+        run_id = self._runs.begin(bot.id, trigger="web")
 
         def _on_event(event: AgentEvent) -> None:
             if isinstance(event, UsageEvent):
@@ -1047,7 +1109,7 @@ class WsGatewayServer:
                 session.total_tokens += event.total_tokens
                 session.cache_read_tokens += event.cache_read_tokens
                 session.reasoning_tokens += event.reasoning_tokens
-            self._emit(event, session_id=session.id)
+            self._emit(event, session_id=session.id, run_id=run_id)
 
         try:
             provider_id, model_id = _split_selected_model(session_model)
@@ -1062,27 +1124,40 @@ class WsGatewayServer:
 
             if outcome.pending_approval is not None:
                 pending = outcome.pending_approval
-                approval = self._record_approval(pending, bot)
+                approval = self._record_approval(pending, bot, run_id=run_id)
+                self._runs.set_status(run_id, "waiting_approval")
                 self._pending_approvals[pending.call_id] = {
                     "runtime": runtime,
                     "pending": pending,
                     "session": session,
                     "approval_id": approval.id,
+                    "run_id": run_id,
                 }
                 self._remember_runtime(session, runtime)
                 save_session(session)
                 return
 
             self._remember_runtime(session, runtime)
+            self._runs.finish(run_id, "done")
         except asyncio.CancelledError:
             logger.info("Agent run cancelled")
-            self._emit(ErrorEvent(message="Agent run cancelled", recoverable=True), session_id=session.id)
-            self._emit(DoneEvent(), session_id=session.id)
+            self._runs.finish(run_id, "cancelled")
+            self._emit(
+                ErrorEvent(message="Agent run cancelled", recoverable=True),
+                session_id=session.id,
+                run_id=run_id,
+            )
+            self._emit(DoneEvent(), session_id=session.id, run_id=run_id)
         except Exception as exc:
             error_occurred = True
             logger.exception("Agent loop failed")
-            self._emit(ErrorEvent(message=str(exc), recoverable=False), session_id=session.id)
-            self._emit(DoneEvent(), session_id=session.id)
+            self._runs.finish(run_id, "failed", error=str(exc))
+            self._emit(
+                ErrorEvent(message=str(exc), recoverable=False),
+                session_id=session.id,
+                run_id=run_id,
+            )
+            self._emit(DoneEvent(), session_id=session.id, run_id=run_id)
         finally:
             # 清理任务引用
             if session.id in self._current_tasks:
@@ -1184,7 +1259,7 @@ class WsGatewayServer:
             if adapter is not None:
                 await adapter.send_text(inbound.external_chat_id, str(message.text))
 
-        await self._handle_group_prompt(group_id, inbound.text, notify=notify)
+        await self._handle_group_prompt(group_id, inbound.text, trigger="telegram", notify=notify)
 
     async def _on_channel_approval(
         self,
@@ -1220,19 +1295,25 @@ class WsGatewayServer:
             logger.warning("Routine %s targets a missing group %s", routine.id, routine.target_group_id)
             return
         notify = self._notify_for_group(routine.target_group_id)
-        await self._handle_group_prompt(routine.target_group_id, routine.prompt, notify=notify)
+        await self._handle_group_prompt(
+            routine.target_group_id,
+            routine.prompt,
+            trigger="routine",
+            notify=notify,
+        )
 
     async def _handle_group_prompt(
         self,
         group_id: str,
         text: str,
         *,
+        trigger: str = "group",
         notify: Callable[[Any], Awaitable[None]] | None = None,
     ) -> None:
         chat = GroupChatService(self._bots, self._groups, self._sessions_db, self._group_messages)
 
         async def execute(bot: Any, session: Any, messages: list[Any]) -> str:
-            return await self._execute_group_bot(bot, session, messages, group_id)
+            return await self._execute_group_bot(bot, session, messages, group_id, trigger=trigger)
 
         try:
             appended = await chat.handle_user_message(group_id, text, execute)
@@ -1257,6 +1338,8 @@ class WsGatewayServer:
         session: Any,
         messages: list[Any],
         group_id: str,
+        *,
+        trigger: str = "group",
     ) -> str:
         """Run one bot turn against the new group messages and return its text."""
         from xiaoqiao.framework_session import save_framework_session
@@ -1289,8 +1372,15 @@ class WsGatewayServer:
         options = thinking_options_for_model(level, provider_id, model_id)
         client = self._client_for(session_model)
 
+        run_id = self._runs.begin(
+            bot.id,
+            session_id=session.id,
+            group_id=group_id,
+            trigger=trigger,
+        )
+
         def _on_event(event: AgentEvent) -> None:
-            self._emit(event, session_id=session.id, group_id=group_id)
+            self._emit(event, session_id=session.id, group_id=group_id, run_id=run_id)
 
         runtime = self._runtime_for(
             session,
@@ -1301,29 +1391,44 @@ class WsGatewayServer:
             bool(getattr(settings, "tool_approval", {}).get("enabled", True)) if settings else True,
         )
         run_started = datetime.now(UTC)
-        outcome = await runtime.run_turn(prompt_block, _on_event)
+        try:
+            outcome = await runtime.run_turn(prompt_block, _on_event)
+        except Exception as exc:
+            self._runs.finish(run_id, "failed", error=str(exc))
+            raise
         self._scan_artifacts(bot, run_started, group_id=group_id)
         save_framework_session(runtime.agent_session)
         if outcome.pending_approval is not None:
             pending = outcome.pending_approval
-            approval = self._record_approval(pending, bot, group_id=group_id)
+            approval = self._record_approval(pending, bot, group_id=group_id, run_id=run_id)
+            self._runs.set_status(run_id, "waiting_approval")
             self._pending_approvals[pending.call_id] = {
                 "runtime": runtime,
                 "pending": pending,
                 "session": session,
                 "group_id": group_id,
                 "approval_id": approval.id,
+                "run_id": run_id,
             }
             return "（需要你审批后才能继续）"
+        self._runs.finish(run_id, "done")
         return outcome.text
 
-    def _record_approval(self, pending: PendingApproval, bot: Any, *, group_id: str = "") -> Any:
+    def _record_approval(
+        self,
+        pending: PendingApproval,
+        bot: Any,
+        *,
+        group_id: str = "",
+        run_id: str | None = None,
+    ) -> Any:
         """Persist the approval and announce it with the durable approval id."""
-        run_id = self._approvals.create_run(
-            bot.id,
-            group_id=group_id or None,
-            trigger="group" if group_id else "web",
-        )
+        if run_id is None:
+            run_id = self._approvals.create_run(
+                bot.id,
+                group_id=group_id or None,
+                trigger="group" if group_id else "web",
+            )
         approval = self._approvals.create(
             run_id,
             pending.call_id,
@@ -1423,6 +1528,7 @@ class WsGatewayServer:
         pending: PendingApproval = info["pending"]
         session = info["session"]
         group_id = info.get("group_id", "")
+        run_id = info.get("run_id", "")
 
         def _on_event(event: AgentEvent) -> None:
             if isinstance(event, UsageEvent) and hasattr(session, "input_tokens"):
@@ -1431,7 +1537,7 @@ class WsGatewayServer:
                 session.total_tokens += event.total_tokens
                 session.cache_read_tokens += event.cache_read_tokens
                 session.reasoning_tokens += event.reasoning_tokens
-            self._emit(event, session_id=session.id, group_id=group_id)
+            self._emit(event, session_id=session.id, group_id=group_id, run_id=run_id)
 
         try:
             outcome = await runtime.resolve_approval(pending.call_id, approved, _on_event)
@@ -1442,15 +1548,25 @@ class WsGatewayServer:
                     "pending": outcome.pending_approval,
                     "session": session,
                     "group_id": group_id,
+                    "run_id": run_id,
                 }
+                if run_id:
+                    self._runs.set_status(run_id, "waiting_approval")
+            else:
+                if run_id:
+                    self._runs.finish(run_id, "done")
             self._remember_runtime(session, runtime)
             self._save_session_if_jsonl(session)
         except asyncio.CancelledError:
             logger.info("Approval resume cancelled")
+            if run_id:
+                self._runs.finish(run_id, "cancelled")
             self._emit(ErrorEvent(message="Agent run cancelled", recoverable=True), session_id=session.id)
             self._emit(DoneEvent(), session_id=session.id)
         except Exception as exc:
             logger.exception("Approval resume failed")
+            if run_id:
+                self._runs.finish(run_id, "failed", error=str(exc))
             self._emit(ErrorEvent(message=str(exc), recoverable=False), session_id=session.id)
             self._emit(DoneEvent(), session_id=session.id)
         finally:

@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
+from xiaoqiao.agent_runtime import PendingApproval
 from xiaoqiao.gateway.ws_server import WsGatewayServer
 from xiaoqiao.settings import Settings
 
@@ -30,7 +32,7 @@ class TestGroupPromptWiring:
             default_bot_id=watch.id,
         )
 
-        async def fake_execute(bot, session, messages, group_id) -> str:
+        async def fake_execute(bot, session, messages, group_id, *, trigger="group") -> str:
             return f"{bot.name} 收到"
 
         server._execute_group_bot = fake_execute  # type: ignore[method-assign]
@@ -71,7 +73,7 @@ class TestGroupPromptWiring:
             target_group_id=group.id,
         )
 
-        async def fake_execute(bot, session, messages, group_id) -> str:
+        async def fake_execute(bot, session, messages, group_id, *, trigger="group") -> str:
             return "日报写好了"
 
         server._execute_group_bot = fake_execute  # type: ignore[method-assign]
@@ -93,7 +95,7 @@ class TestGroupPromptWiring:
             settings={"maxHops": 2},
         )
 
-        async def fake_execute(bot, session, messages, group_id) -> str:
+        async def fake_execute(bot, session, messages, group_id, *, trigger="group") -> str:
             if bot.id == watch.id:
                 return "@coder 整理一下"
             return "整理完了"
@@ -116,6 +118,23 @@ class FakeAdapter:
         self.sent.append((chat_id, text))
 
 
+class TestRunRecords:
+    def test_record_approval_reuses_the_run(self, server: WsGatewayServer) -> None:
+        coder = server._bots.create("Coder", slug="coder")
+        run_id = server._runs.begin(coder.id, trigger="web")
+        pending = PendingApproval(
+            call_id="call_1",
+            name="run_command",
+            arguments="{}",
+            request=cast(Any, None),
+        )
+
+        approval = server._record_approval(pending, coder, run_id=run_id)
+
+        assert approval.run_id == run_id
+        assert [item.id for item in server._runs.list(bot_id=coder.id)] == [run_id]
+
+
 class TestChannelRouting:
     @pytest.mark.asyncio
     async def test_inbound_message_runs_group_and_replies(self, server: WsGatewayServer) -> None:
@@ -129,7 +148,7 @@ class TestChannelRouting:
         adapter = FakeAdapter()
         server._adapters[channel.id] = adapter  # type: ignore[assignment]
 
-        async def fake_execute(bot, session, messages, group_id) -> str:
+        async def fake_execute(bot, session, messages, group_id, *, trigger="group") -> str:
             return "收到"
 
         server._execute_group_bot = fake_execute  # type: ignore[method-assign]

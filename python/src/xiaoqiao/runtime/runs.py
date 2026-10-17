@@ -228,3 +228,90 @@ class RunManager:
             if future is not None and not future.done():
                 future.set_result(status)
             self._tasks.pop(run_id, None)
+
+
+class RunRepository:
+    """Record-only run persistence used by the gateway's in-place execution.
+
+    ``RunManager`` owns queued execution; this repository exists so ad-hoc
+    turns (direct chat, group handoff, routine delivery) still get a stable
+    ``run_id`` without forcing them through the queue yet.
+    """
+
+    def __init__(self, db_path: str | Path | None = None) -> None:
+        self._path = db_path
+        store.init_db(self._path)
+
+    def _connect(self):
+        return store.connect(self._path)
+
+    def begin(
+        self,
+        bot_id: str,
+        *,
+        session_id: str | None = None,
+        group_id: str | None = None,
+        trigger: str = "web",
+        hop: int = 0,
+        reply_to_message: str | None = None,
+        parent_run_id: str | None = None,
+    ) -> str:
+        run_id = f"run_{uuid.uuid4().hex[:12]}"
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO runs (id, bot_id, session_id, group_id, trigger, reply_to_message, "
+                "parent_run_id, hop, status, started_at, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?)",
+                (
+                    run_id,
+                    bot_id,
+                    session_id,
+                    group_id,
+                    trigger,
+                    reply_to_message,
+                    parent_run_id,
+                    hop,
+                    _now(),
+                    _now(),
+                ),
+            )
+        return run_id
+
+    def set_status(self, run_id: str, status: str) -> None:
+        with self._connect() as conn:
+            conn.execute("UPDATE runs SET status = ? WHERE id = ?", (status, run_id))
+
+    def finish(self, run_id: str, status: str = "done", *, error: str | None = None) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE runs SET status = ?, ended_at = ?, error = ? WHERE id = ?",
+                (status, _now(), error, run_id),
+            )
+
+    def get(self, run_id: str) -> RunRecord | None:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM runs WHERE id = ?", (run_id,)).fetchone()
+        return _row_to_run(row) if row else None
+
+    def list(
+        self,
+        *,
+        bot_id: str | None = None,
+        group_id: str | None = None,
+        status: str | None = None,
+        limit: int = 50,
+    ) -> list[RunRecord]:
+        query = "SELECT * FROM runs"
+        clauses: list[str] = []
+        values: list[Any] = []
+        for column, value in (("bot_id", bot_id), ("group_id", group_id), ("status", status)):
+            if value is not None:
+                clauses.append(f"{column} = ?")
+                values.append(value)
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
+        query += " ORDER BY created_at DESC LIMIT ?"
+        values.append(limit)
+        with self._connect() as conn:
+            rows = conn.execute(query, values).fetchall()
+        return [_row_to_run(row) for row in rows]
