@@ -46,6 +46,29 @@ class TestGroupPromptWiring:
         assert sessions[0].last_seen_seq == messages[-1].seq
 
     @pytest.mark.asyncio
+    async def test_routine_posts_into_its_group(self, server: WsGatewayServer) -> None:
+        coder = server._bots.create("Coder", slug="coder")
+        group = server._groups.create("Daily", [coder.id])
+        routine = server._routines.create(
+            coder.id,
+            "日报",
+            {"kind": "interval", "minutes": 30},
+            "写一条日报",
+            target_group_id=group.id,
+        )
+
+        async def fake_execute(bot, session, messages, group_id) -> str:
+            return "日报写好了"
+
+        server._execute_group_bot = fake_execute  # type: ignore[method-assign]
+
+        await server._fire_routine(routine, "2026-10-18T01:00:00+00:00")
+
+        messages = server._group_messages.list(group.id)
+        assert [message.text for message in messages] == ["写一条日报", "日报写好了"]
+        assert messages[0].author_type == "user"
+
+    @pytest.mark.asyncio
     async def test_handoff_advances_two_sessions(self, server: WsGatewayServer) -> None:
         coder = server._bots.create("Coder", slug="coder")
         watch = server._bots.create("盯盘", slug="watch")

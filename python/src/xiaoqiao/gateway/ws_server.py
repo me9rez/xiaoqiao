@@ -43,7 +43,9 @@ from xiaoqiao.mcp import (
 from xiaoqiao.runtime.approvals import ApprovalBroker, approval_to_dict
 from xiaoqiao.runtime.group_chat import GroupChatService, render_group_context
 from xiaoqiao.runtime.group_messages import GroupMessageRepository, message_to_dict
+from xiaoqiao.runtime.routines import RoutineRepository, routine_to_dict
 from xiaoqiao.runtime.sessions import SessionRepository
+from xiaoqiao.scheduler import Scheduler
 from xiaoqiao.session import (
     create_session,
     delete_session,
@@ -232,6 +234,8 @@ class WsGatewayServer:
         self._group_messages = GroupMessageRepository()
         self._sessions_db = SessionRepository()
         self._approvals = ApprovalBroker()
+        self._routines = RoutineRepository()
+        self._scheduler = Scheduler(self._routines, self._fire_routine)
         self._session: Any = None
         self._ws: ServerConnection | None = None
         self._emit_tasks: list[asyncio.Task[None]] = []
@@ -542,6 +546,55 @@ class WsGatewayServer:
                             self._send_rpc_response(request_id, group_to_dict(group))
                     except Exception as exc:
                         logger.exception("removeGroupMember failed")
+                        self._send_rpc_error(request_id, str(exc))
+                elif method == "listRoutines":
+                    try:
+                        items = self._routines.list(bot_id=params.get("botId") or None)
+                        self._send_rpc_response(request_id, [routine_to_dict(item) for item in items])
+                    except Exception as exc:
+                        logger.exception("listRoutines failed")
+                        self._send_rpc_error(request_id, str(exc))
+                elif method == "createRoutine":
+                    try:
+                        routine = self._routines.create(
+                            params["botId"],
+                            params["name"],
+                            params.get("schedule") or {"kind": "daily", "at": "09:00", "tz": "Asia/Shanghai"},
+                            params["prompt"],
+                            target_group_id=params.get("targetGroupId") or None,
+                            target_channel_id=params.get("targetChannelId") or None,
+                            enabled=bool(params.get("enabled", True)),
+                        )
+                        self._send_rpc_response(request_id, routine_to_dict(routine))
+                    except Exception as exc:
+                        logger.exception("createRoutine failed")
+                        self._send_rpc_error(request_id, str(exc))
+                elif method == "updateRoutine":
+                    try:
+                        routine_id = params.pop("routineId", "")
+                        routine = self._routines.update(routine_id, **params)
+                        if routine is None:
+                            self._send_rpc_error(request_id, f"Routine not found: {routine_id}")
+                        else:
+                            self._send_rpc_response(request_id, routine_to_dict(routine))
+                    except Exception as exc:
+                        logger.exception("updateRoutine failed")
+                        self._send_rpc_error(request_id, str(exc))
+                elif method == "deleteRoutine":
+                    try:
+                        self._send_rpc_response(request_id, {"ok": self._routines.delete(params.get("routineId", ""))})
+                    except Exception as exc:
+                        logger.exception("deleteRoutine failed")
+                        self._send_rpc_error(request_id, str(exc))
+                elif method == "toggleRoutine":
+                    try:
+                        routine = self._routines.toggle(params.get("routineId", ""), bool(params.get("enabled", True)))
+                        if routine is None:
+                            self._send_rpc_error(request_id, "Routine not found")
+                        else:
+                            self._send_rpc_response(request_id, routine_to_dict(routine))
+                    except Exception as exc:
+                        logger.exception("toggleRoutine failed")
                         self._send_rpc_error(request_id, str(exc))
                 elif method == "listGroupMessages":
                     try:
@@ -931,6 +984,24 @@ class WsGatewayServer:
             self._session = session
             save_session(session)
 
+    async def _fire_routine(self, routine: Any, scheduled_at: str) -> None:
+        self._broadcast(
+            {
+                "type": "routine_fired",
+                "routineId": routine.id,
+                "botId": routine.bot_id,
+                "groupId": routine.target_group_id,
+                "scheduledAt": scheduled_at,
+            }
+        )
+        if not routine.target_group_id:
+            logger.info("Routine %s fired without a target; nothing to deliver", routine.id)
+            return
+        if self._groups.get(routine.target_group_id) is None:
+            logger.warning("Routine %s targets a missing group %s", routine.id, routine.target_group_id)
+            return
+        await self._handle_group_prompt(routine.target_group_id, routine.prompt)
+
     async def _handle_group_prompt(self, group_id: str, text: str) -> None:
         chat = GroupChatService(self._bots, self._groups, self._sessions_db, self._group_messages)
 
@@ -1145,6 +1216,7 @@ class WsGatewayServer:
 
         ctx = discover_project_context()
         logger.info("WS gateway starting — OS: %s, shell: %s", ctx.os_name, ctx.shell)
+        await self._scheduler.start()
         async with serve(self._handle_ws, self._host, self._port):
             logger.info("WS gateway on ws://%s:%d", self._host, self._port)
             print(f"WS READY ws://{self._host}:{self._port}", file=sys.stderr, flush=True)
