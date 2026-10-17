@@ -26,6 +26,21 @@ const form = reactive({
 })
 
 const tools = ref<ToolInfo[]>([])
+const previewText = ref('')
+const previewing = ref(false)
+
+async function loadPreview() {
+  if (!props.bot) return
+  previewing.value = true
+  try {
+    const result = await gatewayService.call<{ prompt: string }>('previewPrompt', { botId: props.bot.id })
+    previewText.value = result.prompt
+  } catch (err) {
+    formError.value = err instanceof Error ? err.message : String(err)
+  } finally {
+    previewing.value = false
+  }
+}
 
 async function loadTools() {
   if (tools.value.length > 0 || !gatewayService.isConnected()) return
@@ -50,6 +65,7 @@ function reset(source: Bot | null) {
   form.workspace = source?.workspace ?? ''
   form.tools = source ? [...source.tools] : []
   formError.value = null
+  previewText.value = ''
   void loadTools()
 }
 
@@ -222,6 +238,21 @@ function closeOverlay(event: MouseEvent) {
                 </span>
               </label>
             </div>
+          </div>
+
+          <div v-if="bot">
+            <button
+              type="button"
+              class="h-[30px] px-3 rounded-[var(--radius-md)] text-[13px] text-[var(--color-text)] border-0.5 border-[var(--color-line-strong)] hover:bg-[var(--color-hover)] disabled:opacity-50"
+              :disabled="previewing"
+              @click="loadPreview"
+            >
+              {{ previewing ? '生成中…' : '预览 System Prompt' }}
+            </button>
+            <pre
+              v-if="previewText"
+              class="mt-2 max-h-48 overflow-y-auto p-2.5 rounded-[var(--radius-md)] bg-[var(--color-surface)] text-[11px] leading-relaxed text-[var(--color-text-muted)] whitespace-pre-wrap"
+            >{{ previewText }}</pre>
           </div>
 
           <p v-if="formError" class="text-[13px] text-[var(--color-danger)]" role="alert">

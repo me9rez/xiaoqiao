@@ -15,6 +15,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+import httpx
 from websockets.asyncio.server import ServerConnection, serve
 
 from xiaoqiao.agent_runtime import AgentRuntime, PendingApproval
@@ -653,6 +654,25 @@ class WsGatewayServer:
                     except Exception as exc:
                         logger.exception("usageSummary failed")
                         self._send_rpc_error(request_id, str(exc))
+                elif method == "previewPrompt":
+                    try:
+                        prompt = self.preview_prompt(
+                            params.get("botId", ""),
+                            query=params.get("query", ""),
+                        )
+                        self._send_rpc_response(request_id, {"prompt": prompt})
+                    except Exception as exc:
+                        logger.exception("previewPrompt failed")
+                        self._send_rpc_error(request_id, str(exc))
+                elif method == "testChannel":
+                    try:
+                        self._send_rpc_response(
+                            request_id,
+                            await self.test_channel(params.get("channelId", "")),
+                        )
+                    except Exception as exc:
+                        logger.exception("testChannel failed")
+                        self._send_rpc_error(request_id, str(exc))
                 elif method == "listTools":
                     try:
                         self._send_rpc_response(
@@ -1246,6 +1266,51 @@ class WsGatewayServer:
             save_session(session)
             self._record_session_memory(bot.id, session.id, session.messages)
 
+    def preview_prompt(self, bot_id: str = "", *, query: str = "") -> str:
+        """Render the system prompt a bot would use, without running a turn."""
+        from xiaoqiao.mcp import format_mcp_tools_for_prompt
+        from xiaoqiao.system_prompt import (
+            BuildSystemPromptOptions,
+            build_system_prompt,
+            discover_project_context,
+        )
+
+        settings = self._settings if isinstance(self._settings, Settings) else None
+        bot = self._bots.get(bot_id) if bot_id else self._bots.ensure_default()
+        if bot is None:
+            raise ValueError(f"Bot not found: {bot_id}")
+        return build_system_prompt(
+            BuildSystemPromptOptions(
+                persona=bot.persona,
+                bot_name=bot.name,
+                memory_block=self._memory.build_block(bot.id, query=query),
+                project_context=discover_project_context(bot.workspace or None),
+                mcp_tools_prompt=format_mcp_tools_for_prompt(self._mcp_tools),
+                tool_approval=getattr(settings, "tool_approval", None),
+            )
+        )
+
+    async def test_channel(self, channel_id: str) -> dict[str, Any]:
+        """Probe a channel's credentials without starting its adapter."""
+        channel = self._channels.get(channel_id)
+        if channel is None:
+            raise ValueError(f"Channel not found: {channel_id}")
+        if channel.kind != "telegram":
+            return {"ok": False, "error": f"暂不支持测试 {channel.kind} 频道"}
+        token = str(channel.config.get("token") or "")
+        if not token:
+            return {"ok": False, "error": "缺少 Bot Token"}
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                response = await client.get(f"https://api.telegram.org/bot{token}/getMe")
+            payload = response.json()
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+        if not payload.get("ok"):
+            return {"ok": False, "error": str(payload.get("description", "unknown error"))}
+        result = payload.get("result") or {}
+        return {"ok": True, "username": str(result.get("username", ""))}
+
     def _budget_error(self) -> str | None:
         """Return a reason when today's usage is already over the configured budget."""
         settings = self._settings if isinstance(self._settings, Settings) else None
@@ -1291,6 +1356,17 @@ class WsGatewayServer:
                     "artifact": artifact_to_dict(artifact),
                 }
             )
+            target = self._telegram_for_group(group_id) if group_id else None
+            if target is None:
+                continue
+            channel, adapter = target
+            chat_id = str(channel.config.get("chatId") or "")
+            if not chat_id:
+                continue
+            absolute = str(Path(bot.workspace) / artifact.path)
+            task = asyncio.create_task(adapter.send_file(chat_id, absolute, caption=artifact.path))
+            self._emit_tasks.append(task)
+            task.add_done_callback(self._emit_tasks.remove)
 
     @staticmethod
     def _last_user_text(messages: list[Any]) -> str:

@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { Plus, Send } from '@lucide/vue'
-import { onMounted, ref, watch } from 'vue'
+import { onMounted, reactive, ref, watch } from 'vue'
 
 import ChannelEditorModal from '@/components/channels/ChannelEditorModal.vue'
+import { gatewayService } from '@/services/gateway'
 import { useBotsStore } from '@/stores/bots'
 import { useChannelsStore } from '@/stores/channels'
 import { useGroupsStore } from '@/stores/groups'
@@ -14,6 +15,20 @@ const channelsStore = useChannelsStore()
 
 const editorOpen = ref(false)
 const editing = ref<Channel | null>(null)
+const probes = reactive<Record<string, string>>({})
+
+async function probe(channel: Channel) {
+  probes[channel.id] = '测试中…'
+  try {
+    const result = await gatewayService.call<{ ok: boolean; username?: string; error?: string }>(
+      'testChannel',
+      { channelId: channel.id },
+    )
+    probes[channel.id] = result.ok ? `连接正常${result.username ? `（@${result.username}）` : ''}` : result.error || '连接失败'
+  } catch (err) {
+    probes[channel.id] = err instanceof Error ? err.message : String(err)
+  }
+}
 
 function groupName(groupId: unknown): string {
   if (typeof groupId !== 'string' || !groupId) return '未绑定'
@@ -111,6 +126,13 @@ onMounted(async () => {
           <button
             type="button"
             class="h-[30px] px-3 rounded-[var(--radius-md)] text-[13px] border-0.5 border-[var(--color-line-strong)] text-[var(--color-text)] hover:bg-[var(--color-hover)]"
+            @click="probe(channel)"
+          >
+            测试
+          </button>
+          <button
+            type="button"
+            class="h-[30px] px-3 rounded-[var(--radius-md)] text-[13px] border-0.5 border-[var(--color-line-strong)] text-[var(--color-text)] hover:bg-[var(--color-hover)]"
             @click="openEditor(channel)"
           >
             编辑
@@ -134,6 +156,7 @@ onMounted(async () => {
         <div class="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[12px] text-[var(--color-text-muted)]">
           <span>Chat ID：{{ channel.config.chatId || '不限' }}</span>
           <span>Token：{{ channel.config.token === '***' ? '已保存' : '未保存' }}</span>
+          <span v-if="probes[channel.id]" class="text-[var(--color-accent)]">{{ probes[channel.id] }}</span>
         </div>
       </article>
     </div>

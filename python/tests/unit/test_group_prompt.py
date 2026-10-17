@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
@@ -113,12 +114,42 @@ class TestGroupPromptWiring:
 class FakeAdapter:
     def __init__(self) -> None:
         self.sent: list[tuple[str, str]] = []
+        self.files: list[tuple[str, str, str]] = []
 
     async def send_text(self, chat_id: str, text: str) -> None:
         self.sent.append((chat_id, text))
 
+    async def send_file(self, chat_id: str, path: str, caption: str = "") -> None:
+        self.files.append((chat_id, path, caption))
+
 
 class TestRunRecords:
+    def test_preview_prompt_includes_persona(self, server: WsGatewayServer) -> None:
+        bot = server._bots.create("Coder", slug="coder", persona="你说话很简短。")
+
+        prompt = server.preview_prompt(bot.id)
+
+        assert "## 人格：Coder" in prompt
+        assert "你说话很简短。" in prompt
+
+    @pytest.mark.asyncio
+    async def test_channel_probe_reports_missing_token(self, server: WsGatewayServer) -> None:
+        bot = server._bots.create("Coder", slug="coder")
+        channel = server._channels.create(bot.id, "telegram", {"groupId": "grp_1"})
+
+        result = await server.test_channel(channel.id)
+
+        assert result == {"ok": False, "error": "缺少 Bot Token"}
+
+    @pytest.mark.asyncio
+    async def test_channel_probe_rejects_unknown_kind(self, server: WsGatewayServer) -> None:
+        bot = server._bots.create("Coder", slug="coder")
+        channel = server._channels.create(bot.id, "slack", {"token": "T"})
+
+        result = await server.test_channel(channel.id)
+
+        assert result["ok"] is False
+
     def test_budget_gate_blocks_when_exceeded(self, server: WsGatewayServer) -> None:
         coder = server._bots.create("Coder", slug="coder")
         server._settings = Settings(daily_token_budget=100)
@@ -173,6 +204,27 @@ class TestRunRecords:
 
 
 class TestChannelRouting:
+    @pytest.mark.asyncio
+    async def test_artifacts_are_sent_to_the_bound_channel(self, server: WsGatewayServer, tmp_path: Path) -> None:
+        workspace = tmp_path / "ws"
+        workspace.mkdir()
+        bot = server._bots.create("Writer", workspace=str(workspace))
+        group = server._groups.create("Daily", [bot.id])
+        channel = server._channels.create(
+            bot.id,
+            "telegram",
+            {"token": "T", "groupId": group.id, "chatId": "42"},
+        )
+        adapter = FakeAdapter()
+        server._adapters[channel.id] = adapter  # type: ignore[assignment]
+
+        started = datetime.now(UTC)
+        (workspace / "report.md").write_text("hi", encoding="utf-8")
+        server._scan_artifacts(bot, started, group_id=group.id)
+        await asyncio.sleep(0.01)
+
+        assert adapter.files == [("42", str(workspace / "report.md"), "report.md")]
+
     @pytest.mark.asyncio
     async def test_inbound_message_runs_group_and_replies(self, server: WsGatewayServer) -> None:
         coder = server._bots.create("Coder", slug="coder")
