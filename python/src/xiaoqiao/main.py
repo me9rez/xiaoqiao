@@ -235,7 +235,9 @@ async def _async_main(settings: Settings, ws_port: int | None = None) -> None:
 
     def _handler(_loop: asyncio.AbstractEventLoop, context: dict) -> None:
         exc = context.get("exception")
-        if exc is not None and isinstance(exc, OSError) and exc.winerror == 6:
+        # ``winerror`` only exists on Windows; Linux/macOS typeshed has no such
+        # attribute, so read it defensively to keep the type check portable.
+        if exc is not None and isinstance(exc, OSError) and getattr(exc, "winerror", None) == 6:
             return
         if orig_handler:
             orig_handler(_loop, context)
