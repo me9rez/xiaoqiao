@@ -119,6 +119,20 @@ class FakeAdapter:
 
 
 class TestRunRecords:
+    def test_session_memory_is_recorded(self, server: WsGatewayServer) -> None:
+        coder = server._bots.create("Coder", slug="coder")
+        messages = [
+            {"role": "user", "contents": [{"type": "text", "text": "帮我整理日报"}]},
+            {"role": "assistant", "contents": [{"type": "text", "text": "好的"}]},
+        ]
+
+        server._record_session_memory(coder.id, "ses_1", messages)
+        server._record_session_memory(coder.id, "ses_1", messages)
+
+        notes = server._memory.recent_notes(coder.id)
+        assert len(notes) == 1
+        assert "帮我整理日报" in notes[0].text
+
     def test_tool_whitelist_filters_tools(self, server: WsGatewayServer) -> None:
         from types import SimpleNamespace
 

@@ -185,6 +185,41 @@ class MemoryRepository:
         assert row is not None
         return _row_to_note(row)
 
+    def upsert_session_note(
+        self,
+        bot_id: str,
+        session_id: str,
+        text: str,
+        *,
+        user_id: str = OWNER,
+    ) -> Note:
+        """Keep exactly one rolling note per session."""
+        cleaned = text.strip()
+        if not cleaned:
+            raise ValueError("memory note must not be empty")
+        now = _now()
+        with self._connect() as conn:
+            existing = conn.execute(
+                "SELECT id FROM memory_notes WHERE bot_id = ? AND user_id = ? AND session_id = ?",
+                (bot_id, user_id, session_id),
+            ).fetchone()
+            if existing is not None:
+                conn.execute(
+                    "UPDATE memory_notes SET text = ?, created_at = ? WHERE id = ?",
+                    (cleaned, now, existing["id"]),
+                )
+                note_id = existing["id"]
+            else:
+                note_id = f"note_{uuid.uuid4().hex[:12]}"
+                conn.execute(
+                    "INSERT INTO memory_notes (id, bot_id, user_id, session_id, text, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (note_id, bot_id, user_id, session_id, cleaned, now),
+                )
+            row = conn.execute("SELECT * FROM memory_notes WHERE id = ?", (note_id,)).fetchone()
+        assert row is not None
+        return _row_to_note(row)
+
     def recent_notes(self, bot_id: str, *, limit: int = 5) -> list[Note]:
         with self._connect() as conn:
             rows = conn.execute(

@@ -51,6 +51,7 @@ from xiaoqiao.runtime.group_messages import GroupMessageRepository, message_to_d
 from xiaoqiao.runtime.memory import MemoryRepository, fact_to_dict, note_to_dict
 from xiaoqiao.runtime.routines import RoutineRepository, routine_to_dict
 from xiaoqiao.runtime.runs import RunRepository
+from xiaoqiao.runtime.session_memory import format_note, summarize_session
 from xiaoqiao.runtime.sessions import SessionRepository
 from xiaoqiao.scheduler import Scheduler
 from xiaoqiao.session import (
@@ -1192,6 +1193,17 @@ class WsGatewayServer:
             session = end_session_run(session.id, error=error_occurred) or session
             self._session = session
             save_session(session)
+            self._record_session_memory(bot.id, session.id, session.messages)
+
+    def _record_session_memory(self, bot_id: str, session_id: str, messages: list[Any]) -> None:
+        """Roll the session's recent asks into one memory note (best effort)."""
+        summary = summarize_session(messages)
+        if not summary:
+            return
+        try:
+            self._memory.upsert_session_note(bot_id, session_id, format_note(summary))
+        except Exception:
+            logger.exception("Failed to record session memory for %s", session_id)
 
     def _scan_artifacts(self, bot: Any, started_at: datetime, *, group_id: str = "") -> None:
         """Index files the turn produced, but only for bots with a real workspace."""
