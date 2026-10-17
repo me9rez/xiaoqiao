@@ -80,6 +80,7 @@ class TestCompactionWiring:
         """A misconfigured maxTokens must not disable compaction outright."""
         runtime = _build_runtime(_settings_with(context=8_000, output=64_000))
         context, output = runtime._compaction_bounds  # type: ignore[misc]
+        assert context is not None
         assert output is not None
         assert 0 < output < context
 

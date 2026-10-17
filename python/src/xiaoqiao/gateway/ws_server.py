@@ -16,6 +16,7 @@ from typing import Any
 from websockets.asyncio.server import ServerConnection, serve
 
 from xiaoqiao.agent_runtime import AgentRuntime, PendingApproval
+from xiaoqiao.bots import BotRepository, LastBotError, bot_to_dict
 from xiaoqiao.events import (
     AgentEvent,
     DoneEvent,
@@ -219,6 +220,7 @@ class WsGatewayServer:
         self._skill_provider = skill_provider
         self._mcp_tools = mcp_tools or []
         self._current_tasks: dict[str, asyncio.Task[None]] = {}
+        self._bots = BotRepository()
         self._session: Any = None
         self._ws: ServerConnection | None = None
         self._emit_tasks: list[asyncio.Task[None]] = []
@@ -307,8 +309,9 @@ class WsGatewayServer:
                 if method == "prompt":
                     text = params.get("text", "")
                     session_id = params.get("sessionId", "")
-                    logger.info("← prompt (session=%s, text=%.80s)", session_id, text)
-                    self._current_tasks[session_id] = asyncio.create_task(self._handle_prompt(text, session_id))
+                    bot_id = params.get("botId", "")
+                    logger.info("← prompt (bot=%s, session=%s, text=%.80s)", bot_id, session_id, text)
+                    self._current_tasks[session_id] = asyncio.create_task(self._handle_prompt(text, session_id, bot_id))
                 elif method == "cancel":
                     session_id = params.get("sessionId", "")
                     if session_id and session_id in self._current_tasks:
@@ -401,6 +404,46 @@ class WsGatewayServer:
                         )
                     except Exception as exc:
                         logger.exception("updateSettings failed")
+                        self._send_rpc_error(request_id, str(exc))
+                elif method == "listBots":
+                    try:
+                        self._bots.ensure_default()
+                        self._send_rpc_response(request_id, [bot_to_dict(bot) for bot in self._bots.list()])
+                    except Exception as exc:
+                        logger.exception("listBots failed")
+                        self._send_rpc_error(request_id, str(exc))
+                elif method == "createBot":
+                    try:
+                        bot = self._bots.create(
+                            params["name"],
+                            emoji=params.get("emoji", "🤖"),
+                            persona=params.get("persona", ""),
+                            model=params.get("model", ""),
+                            workspace=params.get("workspace", ""),
+                        )
+                        self._send_rpc_response(request_id, bot_to_dict(bot))
+                    except Exception as exc:
+                        logger.exception("createBot failed")
+                        self._send_rpc_error(request_id, str(exc))
+                elif method == "updateBot":
+                    try:
+                        bot_id = params.pop("botId", "")
+                        bot = self._bots.update(bot_id, **params)
+                        if bot is None:
+                            self._send_rpc_error(request_id, f"Bot not found: {bot_id}")
+                        else:
+                            self._send_rpc_response(request_id, bot_to_dict(bot))
+                    except Exception as exc:
+                        logger.exception("updateBot failed")
+                        self._send_rpc_error(request_id, str(exc))
+                elif method == "deleteBot":
+                    try:
+                        bot_id = params.get("botId", "")
+                        self._send_rpc_response(request_id, {"ok": self._bots.delete(bot_id)})
+                    except LastBotError as exc:
+                        self._send_rpc_error(request_id, str(exc))
+                    except Exception as exc:
+                        logger.exception("deleteBot failed")
                         self._send_rpc_error(request_id, str(exc))
                 elif method == "approval_response":
                     call_id = params.get("callId", "")
@@ -649,7 +692,7 @@ class WsGatewayServer:
             if self._ws is ws:
                 self._ws = None
 
-    async def _handle_prompt(self, text: str, session_id: str = "") -> None:
+    async def _handle_prompt(self, text: str, session_id: str = "", bot_id: str = "") -> None:
         from xiaoqiao.mcp import format_mcp_tools_for_prompt
         from xiaoqiao.system_prompt import (
             BuildSystemPromptOptions,
@@ -657,27 +700,36 @@ class WsGatewayServer:
             discover_project_context,
         )
 
-        # Resolve session and model
+        # Resolve the bot first: persona, model and workspace all come from it.
         settings = self._settings if isinstance(self._settings, Settings) else None
         primary_model = getattr(settings, "primary_model", "") if settings else ""
+        bot = self._bots.get(bot_id) if bot_id else self._bots.ensure_default()
+        if bot is None:
+            self._emit(ErrorEvent(message=f"Bot not found: {bot_id}", recoverable=False))
+            self._emit(DoneEvent())
+            return
+        default_model = bot.model or primary_model
+
         existing = load_session(session_id) if session_id else None
         if existing:
             session = existing
         elif self._session is None:
-            session = create_session(model=primary_model)
+            session = create_session(model=default_model)
         else:
             session = self._session
         self._session = session
-        session_model = session.model or primary_model
+        session_model = session.model or default_model
         if not session_id:
             save_session(session)
         session = start_session_run(session.id) or session
         self._session = session
 
-        ctx = discover_project_context()
+        ctx = discover_project_context(bot.workspace or None)
         mcp_tools_prompt = format_mcp_tools_for_prompt(self._mcp_tools)
         sys_prompt = build_system_prompt(
             BuildSystemPromptOptions(
+                persona=bot.persona,
+                bot_name=bot.name,
                 project_context=ctx,
                 mcp_tools_prompt=mcp_tools_prompt,
                 tool_approval=getattr(settings, "tool_approval", None),

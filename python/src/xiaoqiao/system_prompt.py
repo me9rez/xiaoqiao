@@ -40,6 +40,8 @@ class BuildSystemPromptOptions:
     """Options used to assemble the system prompt."""
 
     instructions: str | None = None
+    persona: str = ""
+    bot_name: str = ""
     extra_guidelines: Sequence[str] = field(default_factory=tuple)
     project_context: ProjectContext | None = None
     skills_prompt: str = ""
@@ -169,6 +171,12 @@ def build_system_prompt(options: BuildSystemPromptOptions) -> str:
 
     # Core instructions
     parts.append(options.instructions or _DEFAULT_INSTRUCTIONS)
+
+    # Persona (SOUL.md content) sits on top of the shared contract.
+    persona = options.persona.strip()
+    if persona:
+        name = options.bot_name.strip() or "助理"
+        parts.append(f"## 人格：{name}\n{persona}")
 
     # Current date
     today = date.today()
