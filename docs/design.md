@@ -18,6 +18,7 @@
 | 旧变量 | `tokens.css` 末尾的兼容别名 | `--bg-page`、`--border` 等仅作过渡，新代码禁止使用 |
 | 字体 | 拉丁与数字用 Schibsted Grotesk，中文回退系统字体 | 首屏只加载拉丁可变字体，避免中文字库的百级子集请求 |
 | 图标 | `@lucide/vue` | 尺寸遵循 §12 的 14 / 16 / 18 / 20 / 28 |
+| 群聊扩展 | §13 | **本仓库新增**，非 dist-web 解析结果；只允许使用既有 token 与组件私有 `--p-*` |
 
 实现规则：组件里只写 `var(--token)`，不写死十六进制；暗色只覆盖语义 token；边框默认 `--p-hairline`；状态色必须「底色 + 边框 + 文字」成套使用。
 
@@ -746,3 +747,98 @@ html[data-color-scheme="dark"] {
 - 构建哈希会随版本变化，token 名称通常稳定；引用文件时以当次 `index.html` 中的 CSS 名为准。
 - 部分 token 只在特定组件块内定义（如 `--markstream-*`、`--vscode-*`），不应提升为全局设计 token。
 - 未发现源地图或 Web UI 源码，因此无法确认哪些规则是死代码；本文只收录了有明确组件引用的值。
+
+---
+
+## 13. 群聊与多 Bot 协作界面（本仓库扩展）
+
+> **来源说明**：本节不是 `dist-web` 的解析结果，而是本项目为「人 + 多个 Bot 同处一个会话」补充的界面规范。
+> **约束**：只使用 §3–§7 已定义的 token；确需新增的尺寸以组件私有前缀 `--p-*` 定义在 `web/src/styles/tokens.css`，不进入语义层，也不新增颜色。
+
+### 13.1 布局
+
+| 区域 | 尺寸 | 说明 |
+| --- | --- | --- |
+| Bot 轨道 | `--p-rail-w`（64px） | 头像列，与侧栏以 `--color-line` 分隔 |
+| 侧栏 | `--p-sidebar-w`（264px） | 群聊 / 私聊分区列表 |
+| 对话内容 | 最大 `--p-content-max`（760px） | 与单聊一致，居中留白 |
+| 右侧面板 | 460px（`panel-default-w`） | 参与者、记忆、产物 |
+
+- 断点沿用 §7.1：≤1023px 侧栏折叠为抽屉；≤980px 收起右侧面板；≤640px 群设置变底部抽屉。
+- 群头部高度 `--p-group-header-h`（56px），底部 0.5px `--color-line`，与单聊头部一致。
+
+### 13.2 消息
+
+| 元素 | 规格 |
+| --- | --- |
+| 作者行 | 头像 `--p-avatar-sm`（24px）+ 名字 13px / `--weight-medium` / `--color-text` + 时间 12px / `--color-text-faint` |
+| 人类消息 | 气泡背景 `--color-user-bubble-bg`，圆角 `--radius-xl`，最大宽度 `--p-bubble-max`，内边距 10px 14px |
+| Bot 消息 | 不用气泡，正文直接铺在 `--color-bg`；最大宽度 `--p-content-max`；身份靠头像与名字，不靠颜色 |
+| 回复关系 | 消息上方一行 `↳ 回复 @名字`，12px / `--color-text-muted`；点击滚动到原消息，原消息短暂高亮 `--color-selected` |
+| 系统消息 | 居中，12px / `--color-text-faint`；用于跳数上限、成员变更，不使用状态色 |
+| 消息进入 | `opacity 0 → 1` + `translateY(2px) → 0`，`--duration-base`，`--ease-out` |
+
+### 13.3 @ 提及
+
+- 有效提及：背景 `--color-accent-soft`，文字 `--color-accent`，圆角 `--radius-xs`，左右内边距 4px，不换行。
+- 非成员或不存在的提及：文字 `--color-text-muted`，无底色，悬停不变，避免给出「可点击」的错觉。
+- 不能只靠颜色表达「已提及」：文本中必须保留 `@` 字符，读屏可读。
+
+### 13.4 MentionPicker（@ 选择器）
+
+- 复用 §8.8 Menu：最小宽度 180px、内边距 3.5px、圆角 12px、0.5px `--color-line`、`--shadow-menu`、背景 `--color-menu-bg` + `blur(24px) saturate(1.8)`。
+- 行高 32px：头像 20px + 名字 13px / `--weight-option-label`（475）+ slug 12px / `--color-text-faint`。
+- 悬停 `--color-hover`，键盘选中 `--color-selected`；↑↓ 循环、Enter 选中、Esc 关闭。
+- 无匹配时一行 12px / `--color-text-muted`「没有匹配的 Bot」。
+- ARIA：输入框 `aria-expanded` + `aria-controls`；列表 `role="listbox"`；项 `role="option"` + `aria-selected`。
+
+### 13.5 多 Bot「正在输入」
+
+- 位置：输入框上方一行，13px / `--color-text-muted`，例如「Coder、盯盘 正在输入」。
+- 三点：`--p-typing-dot`（4px）圆点，`--color-text-faint`，周期 `--duration-flash`（1.2s），彼此错开 150ms。
+- `prefers-reduced-motion: reduce` 下取消动画，只保留静态文字。
+- `aria-live="polite"`；同一 Bot 的状态在 5s 内不重复播报。
+
+### 13.6 参与者与群设置
+
+- 头部堆叠头像：24px，重叠 -6px，外圈 2px `--color-bg`；超过 4 个显示 `+N`（§8.4 badge sm）。
+- 点击参与者打开群设置，使用 §8.9 Dialog（宽度 440px）；开关项使用 §8.7 Segmented Control。
+- 移除 Bot、归档群等破坏性操作：`danger-soft` 按钮 + 二次确认；确认文案写清「会话与消息将一并删除」。
+
+### 13.7 群内审批卡片
+
+- 复用 §8.6 ActionCard（16px 内边距、12px 圆角、`--color-surface-raised`、0.5px `--color-line`）。
+- 风险分级用状态色成套：普通 `--color-surface`；写文件/执行命令用 `--color-warning-soft` + `-bd` + `--color-warning`；对外发送/删除用 `--color-danger-soft` + `-bd` + `--color-danger`。
+- 标题「需要你确认」16px / 500；说明 13px / `--color-text-muted`；倒计时 12px / `--color-text-faint`。
+- 按钮 36px（md）；Bot 身份不渲染按钮，只显示只读状态「等待你确认」。
+
+### 13.8 群聊 Do / Don't
+
+**Do**
+
+- Bot 与人类都用「头像 + 名字」识别，颜色只做辅助。
+- 每次跳数上限命中时，用系统消息说明原因与下一步（「请手动 @」）。
+- 多个 Bot 同时回复时，按 `reply_to` 分组渲染，组间留 `--space-5`。
+- 键盘可达：@ 选择器、消息跳转、审批按钮全部可 Tab / Enter 操作。
+
+**Don't**
+
+- 不要给不同 Bot 分配固定色相来区分身份——暗色对比度不可控，且违反「状态色成套」原则。
+- 不要用 `--color-accent` 表示 Bot 身份或成功态。
+- 不要在群聊里用「正在输入」动画超过 3 个 Bot 同时展示，多余的折叠为「+N 也在输入」。
+- 不要把系统消息做成 Toast；它在会话流里，不打断用户。
+
+### 13.9 新增组件私有 token（仅群聊）
+
+```css
+:root {
+  --p-rail-w: 64px;
+  --p-group-header-h: 56px;
+  --p-avatar-sm: 24px;
+  --p-avatar-md: 32px;
+  --p-typing-dot: 4px;
+  --p-mention-pad-x: 4px;
+}
+```
+
+以上只允许放在 `tokens.css` 的组件私有区，不提升为全局语义 token；颜色一律复用 §3 的既有 token。
