@@ -43,6 +43,7 @@ from xiaoqiao.mcp import (
 )
 from xiaoqiao.runtime.approvals import ApprovalBroker, approval_to_dict
 from xiaoqiao.runtime.artifacts import ArtifactRepository, artifact_to_dict
+from xiaoqiao.runtime.channels import ChannelRepository, channel_to_dict
 from xiaoqiao.runtime.group_chat import GroupChatService, render_group_context
 from xiaoqiao.runtime.group_messages import GroupMessageRepository, message_to_dict
 from xiaoqiao.runtime.memory import MemoryRepository, fact_to_dict, note_to_dict
@@ -241,6 +242,7 @@ class WsGatewayServer:
         self._scheduler = Scheduler(self._routines, self._fire_routine)
         self._memory = MemoryRepository()
         self._artifacts = ArtifactRepository()
+        self._channels = ChannelRepository()
         self._session: Any = None
         self._ws: ServerConnection | None = None
         self._emit_tasks: list[asyncio.Task[None]] = []
@@ -600,6 +602,42 @@ class WsGatewayServer:
                             self._send_rpc_response(request_id, routine_to_dict(routine))
                     except Exception as exc:
                         logger.exception("toggleRoutine failed")
+                        self._send_rpc_error(request_id, str(exc))
+                elif method == "listChannels":
+                    try:
+                        items = self._channels.list(bot_id=params.get("botId") or None)
+                        self._send_rpc_response(request_id, [channel_to_dict(item) for item in items])
+                    except Exception as exc:
+                        logger.exception("listChannels failed")
+                        self._send_rpc_error(request_id, str(exc))
+                elif method == "createChannel":
+                    try:
+                        channel = self._channels.create(
+                            params.get("botId", ""),
+                            params.get("kind", "telegram"),
+                            params.get("config") or {},
+                            enabled=bool(params.get("enabled", True)),
+                        )
+                        self._send_rpc_response(request_id, channel_to_dict(channel))
+                    except Exception as exc:
+                        logger.exception("createChannel failed")
+                        self._send_rpc_error(request_id, str(exc))
+                elif method == "updateChannel":
+                    try:
+                        channel_id = params.pop("channelId", "")
+                        channel = self._channels.update(channel_id, **params)
+                        if channel is None:
+                            self._send_rpc_error(request_id, f"Channel not found: {channel_id}")
+                        else:
+                            self._send_rpc_response(request_id, channel_to_dict(channel))
+                    except Exception as exc:
+                        logger.exception("updateChannel failed")
+                        self._send_rpc_error(request_id, str(exc))
+                elif method == "deleteChannel":
+                    try:
+                        self._send_rpc_response(request_id, {"ok": self._channels.delete(params.get("channelId", ""))})
+                    except Exception as exc:
+                        logger.exception("deleteChannel failed")
                         self._send_rpc_error(request_id, str(exc))
                 elif method == "listArtifacts":
                     try:
