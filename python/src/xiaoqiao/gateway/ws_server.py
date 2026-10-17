@@ -32,6 +32,7 @@ from xiaoqiao.events import (
     TurnEndEvent,
     UsageEvent,
 )
+from xiaoqiao.groups import GroupRepository, group_to_dict
 from xiaoqiao.mcp import (
     get_connector,
     install_connector,
@@ -39,6 +40,7 @@ from xiaoqiao.mcp import (
     uninstall_connector,
     update_connector_config,
 )
+from xiaoqiao.runtime.group_messages import GroupMessageRepository, message_to_dict
 from xiaoqiao.session import (
     create_session,
     delete_session,
@@ -223,6 +225,8 @@ class WsGatewayServer:
         self._mcp_tools = mcp_tools or []
         self._current_tasks: dict[str, asyncio.Task[None]] = {}
         self._bots = BotRepository()
+        self._groups = GroupRepository()
+        self._group_messages = GroupMessageRepository()
         self._session: Any = None
         self._ws: ServerConnection | None = None
         self._emit_tasks: list[asyncio.Task[None]] = []
@@ -323,6 +327,9 @@ class WsGatewayServer:
                 elif method == "listSessions":
                     try:
                         sessions = list_sessions()
+                        bot_id = params.get("botId", "")
+                        if bot_id:
+                            sessions = [session for session in sessions if getattr(session, "bot_id", "") == bot_id]
                         self._send_rpc_response(request_id, [_session_info_to_dict(s) for s in sessions])
                     except Exception as exc:
                         logger.exception("listSessions failed")
@@ -447,6 +454,77 @@ class WsGatewayServer:
                         self._send_rpc_error(request_id, str(exc))
                     except Exception as exc:
                         logger.exception("deleteBot failed")
+                        self._send_rpc_error(request_id, str(exc))
+                elif method == "listGroups":
+                    try:
+                        groups = self._groups.list(include_archived=bool(params.get("includeArchived", False)))
+                        self._send_rpc_response(request_id, [group_to_dict(group) for group in groups])
+                    except Exception as exc:
+                        logger.exception("listGroups failed")
+                        self._send_rpc_error(request_id, str(exc))
+                elif method == "createGroup":
+                    try:
+                        group = self._groups.create(
+                            params["name"],
+                            list(params.get("botIds", [])),
+                            default_bot_id=params.get("defaultBotId") or None,
+                            settings=params.get("settings"),
+                        )
+                        self._send_rpc_response(request_id, group_to_dict(group))
+                    except Exception as exc:
+                        logger.exception("createGroup failed")
+                        self._send_rpc_error(request_id, str(exc))
+                elif method == "updateGroup":
+                    try:
+                        group_id = params.pop("groupId", "")
+                        group = self._groups.update(group_id, **params)
+                        if group is None:
+                            self._send_rpc_error(request_id, f"Group not found: {group_id}")
+                        else:
+                            self._send_rpc_response(request_id, group_to_dict(group))
+                    except Exception as exc:
+                        logger.exception("updateGroup failed")
+                        self._send_rpc_error(request_id, str(exc))
+                elif method == "deleteGroup":
+                    try:
+                        group_id = params.get("groupId", "")
+                        self._send_rpc_response(request_id, {"ok": self._groups.delete(group_id)})
+                    except Exception as exc:
+                        logger.exception("deleteGroup failed")
+                        self._send_rpc_error(request_id, str(exc))
+                elif method == "addGroupMember":
+                    try:
+                        group = self._groups.add_bot(params.get("groupId", ""), params.get("botId", ""))
+                        if group is None:
+                            self._send_rpc_error(request_id, "Group not found")
+                        else:
+                            self._send_rpc_response(request_id, group_to_dict(group))
+                    except Exception as exc:
+                        logger.exception("addGroupMember failed")
+                        self._send_rpc_error(request_id, str(exc))
+                elif method == "removeGroupMember":
+                    try:
+                        group = self._groups.remove_bot(params.get("groupId", ""), params.get("botId", ""))
+                        if group is None:
+                            self._send_rpc_error(request_id, "Group not found")
+                        else:
+                            self._send_rpc_response(request_id, group_to_dict(group))
+                    except Exception as exc:
+                        logger.exception("removeGroupMember failed")
+                        self._send_rpc_error(request_id, str(exc))
+                elif method == "listGroupMessages":
+                    try:
+                        group_id = params.get("groupId", "")
+                        limit = int(params.get("limit", 100))
+                        before_seq = params.get("beforeSeq")
+                        items = self._group_messages.list(
+                            group_id,
+                            limit=limit,
+                            before_seq=int(before_seq) if before_seq is not None else None,
+                        )
+                        self._send_rpc_response(request_id, [message_to_dict(item) for item in items])
+                    except Exception as exc:
+                        logger.exception("listGroupMessages failed")
                         self._send_rpc_error(request_id, str(exc))
                 elif method == "approval_response":
                     call_id = params.get("callId", "")

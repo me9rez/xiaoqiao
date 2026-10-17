@@ -50,6 +50,19 @@ def _loads(raw: str | None, fallback: Any) -> Any:
         return fallback
 
 
+def group_to_dict(group: Group) -> dict[str, Any]:
+    return {
+        "id": group.id,
+        "name": group.name,
+        "defaultBotId": group.default_bot_id,
+        "botIds": list(group.bot_ids),
+        "settings": group.settings,
+        "archived": group.archived,
+        "createdAt": group.created_at,
+        "updatedAt": group.updated_at,
+    }
+
+
 class GroupRepository:
     """CRUD and membership for groups."""
 
