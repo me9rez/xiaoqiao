@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {
+  Activity,
   CalendarClock,
   ChevronDown,
   Clock,
@@ -233,6 +234,13 @@ function handleRenameKeydown(sessionId: string, event: KeyboardEvent) {
       >
         <CalendarClock class="w-4 h-4" />
         <span>定时任务</span>
+      </RouterLink>
+      <RouterLink
+        to="/runs"
+        class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-[var(--text-muted)] hover:bg-[var(--bg-muted)] transition"
+      >
+        <Activity class="w-4 h-4" />
+        <span>运行记录</span>
       </RouterLink>
       <RouterLink
         to="/approvals"

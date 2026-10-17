@@ -652,6 +652,8 @@ class WsGatewayServer:
                                     "hop": item.hop,
                                     "error": item.error,
                                     "createdAt": item.created_at,
+                                    "startedAt": item.started_at,
+                                    "endedAt": item.ended_at,
                                 }
                                 for item in items
                             ],
@@ -677,6 +679,8 @@ class WsGatewayServer:
                                     "hop": run.hop,
                                     "error": run.error,
                                     "createdAt": run.created_at,
+                                    "startedAt": run.started_at,
+                                    "endedAt": run.ended_at,
                                 },
                             )
                     except Exception as exc:

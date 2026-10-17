@@ -59,6 +59,8 @@ class RunRecord:
     hop: int
     error: str | None
     created_at: str
+    started_at: str | None = None
+    ended_at: str | None = None
 
 
 def _now() -> str:
@@ -76,6 +78,8 @@ def _row_to_run(row: sqlite3.Row) -> RunRecord:
         hop=row["hop"],
         error=row["error"],
         created_at=row["created_at"],
+        started_at=row["started_at"],
+        ended_at=row["ended_at"],
     )
 
 
