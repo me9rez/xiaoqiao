@@ -47,8 +47,8 @@ def _now() -> str:
 
 
 def _slugify(name: str) -> str:
-    slug = _SLUG_RE.sub("-", name.strip().lower()).strip("-")
-    return slug or "bot"
+    """ASCII slug; non-Latin names get an id-based fallback in ``create``."""
+    return _SLUG_RE.sub("-", name.strip().lower()).strip("-")
 
 
 def _row_to_bot(row: sqlite3.Row) -> Bot:
@@ -135,7 +135,7 @@ class BotRepository:
         now = _now()
         bot_id = f"bot_{uuid.uuid4().hex[:12]}"
         with self._connect() as conn:
-            base = _slugify(slug or cleaned)
+            base = _slugify(slug or cleaned) or f"bot-{bot_id[-6:]}"
             final_slug = self._unique_slug(conn, base)
             conn.execute(
                 """

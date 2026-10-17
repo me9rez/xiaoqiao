@@ -4,6 +4,7 @@ export interface SessionInfo {
   model: string
   modelProvider: string
   workspace: string
+  botId: string
   createdAt: string
   updatedAt: string
   messageCount: number
@@ -27,6 +28,7 @@ export interface SessionData {
   model: string
   modelProvider: string
   workspace: string
+  botId: string
   createdAt: string
   updatedAt: string
   messages: Message[]

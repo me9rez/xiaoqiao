@@ -136,13 +136,11 @@ export class GatewayService {
     }
   }
 
-  sendPrompt(text: string, sessionId?: string): void {
-    this.send(
-      JSON.stringify({
-        method: 'prompt',
-        params: sessionId ? { text, sessionId } : { text },
-      }),
-    )
+  sendPrompt(text: string, sessionId?: string, botId?: string): void {
+    const params: Record<string, string> = { text }
+    if (sessionId) params.sessionId = sessionId
+    if (botId) params.botId = botId
+    this.send(JSON.stringify({ method: 'prompt', params }))
   }
 
   sendApprovalResponse(callId: string, approved: boolean, remember = false): void {

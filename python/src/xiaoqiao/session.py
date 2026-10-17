@@ -34,6 +34,7 @@ class SessionInfo:
     model: str = ""
     model_provider: str = ""
     workspace: str = ""
+    bot_id: str = ""
     status: str = "idle"
     session_file: str = ""
     session_started_at: str = ""
@@ -61,6 +62,7 @@ class SessionData:
     model: str = ""
     model_provider: str = ""
     workspace: str = ""
+    bot_id: str = ""
     status: str = "idle"
     session_file: str = ""
     session_started_at: str = ""
@@ -116,6 +118,7 @@ def _load_index() -> dict[str, SessionInfo]:
                 model=info.get("model", ""),
                 model_provider=info.get("model_provider", ""),
                 workspace=info.get("workspace", ""),
+                bot_id=info.get("bot_id", ""),
                 status=info.get("status", "idle"),
                 session_file=info.get("session_file", ""),
                 session_started_at=info.get("session_started_at", ""),
@@ -147,6 +150,7 @@ def _info_to_dict(info: SessionInfo) -> dict[str, Any]:
         "model": info.model,
         "model_provider": info.model_provider,
         "workspace": info.workspace,
+        "bot_id": info.bot_id,
         "status": info.status,
         "session_file": info.session_file,
         "session_started_at": info.session_started_at,
@@ -177,7 +181,12 @@ def list_sessions() -> list[SessionInfo]:
     return sessions
 
 
-def create_session(title: str = "", model: str = "", workspace: str = "") -> SessionData:
+def create_session(
+    title: str = "",
+    model: str = "",
+    workspace: str = "",
+    bot_id: str = "",
+) -> SessionData:
     """Create a new empty session."""
     now = _now()
     session_id = uuid.uuid4().hex[:12]
@@ -188,6 +197,7 @@ def create_session(title: str = "", model: str = "", workspace: str = "") -> Ses
         model=model,
         model_provider=provider_id,
         workspace=workspace,
+        bot_id=bot_id,
         created_at=now,
         updated_at=now,
         session_file=str(_session_path(session_id)),
@@ -250,6 +260,7 @@ def save_session(session: SessionData) -> None:
         model=session.model,
         model_provider=session.model_provider,
         workspace=session.workspace,
+        bot_id=session.bot_id,
         status=session.status,
         session_file=session.session_file or str(path),
         session_started_at=session_started_at,
@@ -295,6 +306,7 @@ def load_session(session_id: str) -> SessionData | None:
         model=info.model,
         model_provider=info.model_provider,
         workspace=info.workspace,
+        bot_id=info.bot_id,
         status=info.status,
         session_file=info.session_file or str(path),
         session_started_at=info.session_started_at,
@@ -313,8 +325,13 @@ def load_session(session_id: str) -> SessionData | None:
     )
 
 
-def update_session(session_id: str, title: str | None = None, model: str | None = None) -> SessionData | None:
-    """Update a session's title and/or model."""
+def update_session(
+    session_id: str,
+    title: str | None = None,
+    model: str | None = None,
+    bot_id: str | None = None,
+) -> SessionData | None:
+    """Update a session's title, model and/or owning bot."""
     index = _load_index()
     info = index.get(session_id)
     if info is None:
@@ -325,6 +342,9 @@ def update_session(session_id: str, title: str | None = None, model: str | None 
     if model is not None:
         info.model = model
         info.model_provider = _split_model(model)[0]
+        info.updated_at = _now()
+    if bot_id is not None:
+        info.bot_id = bot_id
         info.updated_at = _now()
     _save_index(index)
 

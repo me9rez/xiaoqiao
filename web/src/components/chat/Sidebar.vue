@@ -17,13 +17,24 @@ import {
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { gatewayService } from '@/services/gateway'
+import { useBotsStore } from '@/stores/bots'
 import { useChatStore } from '@/stores/chat'
 import { useSessionsStore } from '@/stores/sessions'
 import { useWorkspaceStore } from '@/stores/workspace'
 
 const chatStore = useChatStore()
 const sessionsStore = useSessionsStore()
+const botsStore = useBotsStore()
 const workspaceStore = useWorkspaceStore()
+
+const firstBotId = computed(() => botsStore.bots[0]?.id ?? '')
+
+/** Sessions belong to a bot; legacy rows without botId fall under the first bot. */
+function belongsToActiveBot(session: { botId?: string }): boolean {
+  const active = botsStore.activeBotId
+  if (!active) return true
+  return session.botId ? session.botId === active : firstBotId.value === active
+}
 const router = useRouter()
 
 function isSessionRunning(sessionId: string): boolean {
@@ -66,13 +77,13 @@ onUnmounted(() => {
 
 const workspaceSessions = computed(() => {
   const ws = workspaceStore.workspace?.name || ''
-  return sessionsStore.sessions.filter((s) => s.workspace === ws)
+  return sessionsStore.sessions.filter((s) => s.workspace === ws && belongsToActiveBot(s))
 })
 
 const recentSessions = computed(() => {
   const ws = workspaceStore.workspace?.name || ''
   return sessionsStore.sessions
-    .filter((s) => !s.workspace || s.workspace !== ws)
+    .filter((s) => (!s.workspace || s.workspace !== ws) && belongsToActiveBot(s))
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
 })
 
@@ -85,7 +96,7 @@ async function handleNewSessionInProject() {
   creating.value = true
   try {
     const ws = workspaceStore.workspace?.name || ''
-    const session = await sessionsStore.createSession('新对话', '', ws)
+    const session = await sessionsStore.createSession('新对话', '', ws, botsStore.activeBotId ?? '')
     if (session) {
       router.push({ name: 'chat-session', params: { sessionId: session.id } })
     }

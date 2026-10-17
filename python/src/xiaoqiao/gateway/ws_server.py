@@ -78,6 +78,7 @@ def _session_info_to_dict(info: Any) -> dict[str, Any]:
         "model": info.model,
         "modelProvider": info.model_provider,
         "workspace": info.workspace,
+        "botId": getattr(info, "bot_id", ""),
         "status": info.status,
         "sessionStartedAt": info.session_started_at,
         "lastInteractionAt": info.last_interaction_at,
@@ -100,6 +101,7 @@ def _session_data_to_dict(session: Any) -> dict[str, Any]:
         "model": session.model,
         "modelProvider": session.model_provider,
         "workspace": session.workspace,
+        "botId": getattr(session, "bot_id", ""),
         "createdAt": session.created_at,
         "updatedAt": session.updated_at,
         "messages": session.messages,
@@ -330,7 +332,8 @@ class WsGatewayServer:
                         title = params.get("title", "")
                         model = params.get("model", "")
                         workspace = params.get("workspace", "")
-                        session = create_session(title=title, model=model, workspace=workspace)
+                        bot_id = params.get("botId", "")
+                        session = create_session(title=title, model=model, workspace=workspace, bot_id=bot_id)
                         save_session(session)
                         self._send_rpc_response(request_id, _session_data_to_dict(session))
                     except Exception as exc:
@@ -713,8 +716,12 @@ class WsGatewayServer:
         existing = load_session(session_id) if session_id else None
         if existing:
             session = existing
+            if not session.bot_id:
+                # Legacy sessions predate bots: claim them for whichever bot is in use.
+                update_session(session.id, bot_id=bot.id)
+                session.bot_id = bot.id
         elif self._session is None:
-            session = create_session(model=default_model)
+            session = create_session(model=default_model, bot_id=bot.id)
         else:
             session = self._session
         self._session = session

@@ -35,6 +35,11 @@ class TestBotCrud:
         assert first.slug == "helper"
         assert second.slug == "helper-2"
 
+    def test_non_latin_name_gets_stable_slug(self, repo: BotRepository) -> None:
+        bot = repo.create("盯盘")
+        assert bot.slug.startswith("bot-")
+        assert len(bot.slug) > 4
+
     def test_validate_empty_name(self, repo: BotRepository) -> None:
         with pytest.raises(ValueError):
             repo.create("   ")

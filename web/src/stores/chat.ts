@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { gatewayService } from '@/services/gateway'
+import { useBotsStore } from '@/stores/bots'
 import type { MessageContent, UiMessage } from '@/types/session'
 import {
   isDoneEvent,
@@ -275,7 +276,7 @@ export const useChatStore = defineStore('chat', () => {
       loading: true,
     })
 
-    gatewayService.sendPrompt(text, targetSessionId)
+    gatewayService.sendPrompt(text, targetSessionId, useBotsStore().activeBotId ?? undefined)
   }
 
   function stop() {

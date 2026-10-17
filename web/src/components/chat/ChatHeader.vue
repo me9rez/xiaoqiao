@@ -2,9 +2,11 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { gatewayService } from '@/services/gateway'
+import { useBotsStore } from '@/stores/bots'
 import { useSessionsStore } from '@/stores/sessions'
 
 const sessionsStore = useSessionsStore()
+const botsStore = useBotsStore()
 const route = useRoute()
 const connected = ref(gatewayService.isConnected())
 
@@ -28,14 +30,14 @@ onUnmounted(() => {
 
 const currentTitle = computed(() => {
   const id = route.params.sessionId
-  if (typeof id !== 'string' || id.length === 0) return '小巧'
+  if (typeof id !== 'string' || id.length === 0) return botsStore.activeBot?.name || '小巧'
   const session = sessionsStore.sessions.find((s) => s.id === id)
   return session?.title || '未命名会话'
 })
 </script>
 
 <template>
-  <header class="h-14 flex items-center justify-between px-6 border-b border-[var(--border)] bg-[var(--bg-page)]">
+  <header class="h-14 flex items-center justify-between px-6 border-b border-[var(--color-line)] bg-[var(--color-bg)]">
     <h1 class="text-sm font-medium truncate">
       {{ currentTitle }}
     </h1>

@@ -22,12 +22,13 @@ export const useSessionsStore = defineStore('sessions', () => {
     }
   }
 
-  async function createSession(title = '', model = '', workspace = '') {
+  async function createSession(title = '', model = '', workspace = '', botId = '') {
     error.value = null
     try {
       const params: Record<string, unknown> = { title }
       if (model) params.model = model
       if (workspace) params.workspace = workspace
+      if (botId) params.botId = botId
       const session = await gatewayService.call<SessionData>('createSession', params)
       await fetchSessions()
       currentSessionId.value = session.id
