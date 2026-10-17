@@ -17,4 +17,10 @@ export interface BotDraft {
   persona?: string
   model?: string
   workspace?: string
+  tools?: string[]
+}
+
+export interface ToolInfo {
+  name: string
+  description: string
 }

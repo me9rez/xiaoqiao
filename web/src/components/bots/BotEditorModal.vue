@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { reactive, ref, watch } from 'vue'
 
+import { gatewayService } from '@/services/gateway'
 import { useBotsStore } from '@/stores/bots'
-import type { Bot } from '@/types/bot'
+import type { Bot, ToolInfo } from '@/types/bot'
 
 const props = defineProps<{
   open: boolean
@@ -21,7 +22,25 @@ const form = reactive({
   persona: '',
   model: '',
   workspace: '',
+  tools: [] as string[],
 })
+
+const tools = ref<ToolInfo[]>([])
+
+async function loadTools() {
+  if (tools.value.length > 0 || !gatewayService.isConnected()) return
+  try {
+    tools.value = await gatewayService.call<ToolInfo[]>('listTools')
+  } catch {
+    tools.value = []
+  }
+}
+
+function toggleTool(name: string) {
+  form.tools = form.tools.includes(name)
+    ? form.tools.filter((item) => item !== name)
+    : [...form.tools, name]
+}
 
 function reset(source: Bot | null) {
   form.name = source?.name ?? ''
@@ -29,7 +48,9 @@ function reset(source: Bot | null) {
   form.persona = source?.persona ?? ''
   form.model = source?.model ?? ''
   form.workspace = source?.workspace ?? ''
+  form.tools = source ? [...source.tools] : []
   formError.value = null
+  void loadTools()
 }
 
 watch(
@@ -54,6 +75,7 @@ async function handleSave() {
       persona: form.persona,
       model: form.model.trim(),
       workspace: form.workspace.trim(),
+      tools: form.tools,
     }
     const saved = props.bot
       ? await botsStore.update(props.bot.id, payload)
@@ -172,6 +194,35 @@ function closeOverlay(event: MouseEvent) {
               placeholder="D:\workspace\project"
             >
           </label>
+
+          <div>
+            <span class="block text-[13px] font-[var(--weight-medium)] text-[var(--color-text)] mb-1.5">
+              工具白名单（不选 = 全部工具）
+            </span>
+            <div v-if="tools.length === 0" class="text-[12px] text-[var(--color-text-faint)]">
+              连接网关后可选择
+            </div>
+            <div v-else class="max-h-40 overflow-y-auto space-y-1">
+              <label
+                v-for="tool in tools"
+                :key="tool.name"
+                class="flex items-start gap-2 px-2 py-1.5 rounded-[var(--radius-md)] hover:bg-[var(--color-hover)] cursor-pointer"
+              >
+                <input
+                  type="checkbox"
+                  class="mt-0.5 accent-[var(--color-accent)]"
+                  :checked="form.tools.includes(tool.name)"
+                  @change="toggleTool(tool.name)"
+                >
+                <span class="min-w-0 flex-1">
+                  <span class="block text-[13px] text-[var(--color-text)]">{{ tool.name }}</span>
+                  <span class="block text-[11px] text-[var(--color-text-faint)] truncate">
+                    {{ tool.description }}
+                  </span>
+                </span>
+              </label>
+            </div>
+          </div>
 
           <p v-if="formError" class="text-[13px] text-[var(--color-danger)]" role="alert">
             {{ formError }}

@@ -616,6 +616,21 @@ class WsGatewayServer:
                     except Exception as exc:
                         logger.exception("toggleRoutine failed")
                         self._send_rpc_error(request_id, str(exc))
+                elif method == "listTools":
+                    try:
+                        self._send_rpc_response(
+                            request_id,
+                            [
+                                {
+                                    "name": getattr(tool, "name", "") or "",
+                                    "description": getattr(tool, "description", "") or "",
+                                }
+                                for tool in self._tools
+                            ],
+                        )
+                    except Exception as exc:
+                        logger.exception("listTools failed")
+                        self._send_rpc_error(request_id, str(exc))
                 elif method == "listRuns":
                     try:
                         items = self._runs.list(
@@ -1117,7 +1132,15 @@ class WsGatewayServer:
             options = thinking_options_for_model(lvl, provider_id, model_id)
             client = self._client_for(session_model)
 
-            runtime = self._runtime_for(session, client, sys_prompt, options, settings, approval_enabled)
+            runtime = self._runtime_for(
+                session,
+                client,
+                sys_prompt,
+                options,
+                settings,
+                approval_enabled,
+                tools=self._tools_for(bot),
+            )
             run_started = datetime.now(UTC)
             outcome = await runtime.run_turn(text, _on_event)
             self._scan_artifacts(bot, run_started)
@@ -1389,6 +1412,7 @@ class WsGatewayServer:
             options,
             settings,
             bool(getattr(settings, "tool_approval", {}).get("enabled", True)) if settings else True,
+            tools=self._tools_for(bot),
         )
         run_started = datetime.now(UTC)
         try:
@@ -1504,6 +1528,7 @@ class WsGatewayServer:
         options: dict[str, Any] | None,
         settings: Settings | None,
         approval_enabled: bool,
+        tools: list[Any] | None = None,
     ) -> AgentRuntime:
         """Build (or reuse) the runtime for a xiaoqiao session.
 
@@ -1517,7 +1542,15 @@ class WsGatewayServer:
             thinking_level=(options or {}).get("reasoning_effort"),
             client=client,
             on_event=lambda _event: None,
+            tools=tools,
         )
+
+    def _tools_for(self, bot: Any) -> list[Any]:
+        """Apply the bot's tool whitelist; an empty list means "all tools"."""
+        allowed = set(getattr(bot, "tools", ()) or ())
+        if not allowed:
+            return list(self._tools)
+        return [tool for tool in self._tools if getattr(tool, "name", "") in allowed]
 
     async def _resume_approval(self, call_id: str, approved: bool) -> None:
         """Resume a turn paused for tool approval."""

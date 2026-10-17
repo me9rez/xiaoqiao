@@ -119,6 +119,18 @@ class FakeAdapter:
 
 
 class TestRunRecords:
+    def test_tool_whitelist_filters_tools(self, server: WsGatewayServer) -> None:
+        from types import SimpleNamespace
+
+        server._tools = [SimpleNamespace(name="read_file"), SimpleNamespace(name="run_command")]
+        bot = server._bots.create("Coder", slug="coder")
+
+        assert len(server._tools_for(bot)) == 2
+
+        limited = server._bots.update(bot.id, tools=["read_file"])
+        assert limited is not None
+        assert [tool.name for tool in server._tools_for(limited)] == ["read_file"]
+
     def test_record_approval_reuses_the_run(self, server: WsGatewayServer) -> None:
         coder = server._bots.create("Coder", slug="coder")
         run_id = server._runs.begin(coder.id, trigger="web")

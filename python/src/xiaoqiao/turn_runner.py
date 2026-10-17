@@ -74,6 +74,7 @@ class TurnRunner:
         thinking_level: str | None,
         client: Any,
         on_event: Callable[[AgentEvent], None],
+        tools: list[Any] | None = None,
     ) -> AgentRuntime:
         """Return the cached runtime for a session, creating it on first use."""
         cached = self._runtimes.get(session_id)
@@ -84,7 +85,7 @@ class TurnRunner:
 
         runtime = AgentRuntime(
             client=client,
-            tools=self._tools,
+            tools=list(tools) if tools is not None else self._tools,
             session=get_or_create_framework_session(session_id),
             instructions=instructions,
             on_event=on_event,
