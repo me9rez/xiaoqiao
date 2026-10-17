@@ -10,6 +10,7 @@ import asyncio
 import json
 import logging
 import sys
+import time
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -252,6 +253,7 @@ class WsGatewayServer:
         self._adapters: dict[str, TelegramAdapter] = {}
         self._runs = RunRepository()
         self._usage = UsageRepository()
+        self._rate_window: dict[str, list[float]] = {}
         self._session: Any = None
         self._ws: ServerConnection | None = None
         self._emit_tasks: list[asyncio.Task[None]] = []
@@ -1149,6 +1151,12 @@ class WsGatewayServer:
             self._emit(DoneEvent())
             return
 
+        rate_reason = self._rate_error(bot.id)
+        if rate_reason is not None:
+            self._emit(ErrorEvent(message=rate_reason, recoverable=False))
+            self._emit(DoneEvent())
+            return
+
         existing = load_session(session_id) if session_id else None
         if existing:
             session = existing
@@ -1310,6 +1318,23 @@ class WsGatewayServer:
             return {"ok": False, "error": str(payload.get("description", "unknown error"))}
         result = payload.get("result") or {}
         return {"ok": True, "username": str(result.get("username", ""))}
+
+    def _rate_error(self, bot_id: str) -> str | None:
+        """Sliding-window request limit per bot (0 disables it)."""
+        settings = self._settings if isinstance(self._settings, Settings) else None
+        if settings is None:
+            return None
+        limit = int(getattr(settings, "max_requests_per_minute", 0) or 0)
+        if limit <= 0:
+            return None
+        now = time.monotonic()
+        window = [stamp for stamp in self._rate_window.get(bot_id, []) if now - stamp < 60]
+        if len(window) >= limit:
+            self._rate_window[bot_id] = window
+            return f"请求过于频繁：每分钟最多 {limit} 次"
+        window.append(now)
+        self._rate_window[bot_id] = window
+        return None
 
     def _budget_error(self) -> str | None:
         """Return a reason when today's usage is already over the configured budget."""
@@ -1538,6 +1563,9 @@ class WsGatewayServer:
         budget_reason = self._budget_error()
         if budget_reason is not None:
             raise ValueError(budget_reason)
+        rate_reason = self._rate_error(bot.id)
+        if rate_reason is not None:
+            raise ValueError(rate_reason)
         names = {item.id: item.name for item in self._bots.list()}
         prompt_block = render_group_context(bot, messages, names)
         ctx = discover_project_context(bot.workspace or None)

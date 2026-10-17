@@ -26,7 +26,7 @@
 | M2 群聊 + 主动性 | 建群拉 3 Bot、`@` 应答、交接 ≤3 跳、9:00 日报进群、Bot 审批被拒 | ✅（调度 20s tick + `routine_fires` 去重 + 补跑） |
 | M3 渠道 | Telegram 群多 Bot 互 @、收文件、按钮审批 | ✅（长轮询、4096 分片、sendDocument、callback → broker） |
 | M4 记忆 + 交付 | 跨会话记得偏好、产物可预览可发送 | ✅（facts + FTS + 会话摘要；产物托盘 + 绑定频道自动发送） |
-| M5 加固 | CI 绿、预算生效 | ✅（`.github/workflows/ci.yml`；token/美元双阈值预算门禁）；沙箱后置 |
+| M5 加固 | CI 绿、预算与限流生效、备份可恢复 | ✅（`.github/workflows/ci.yml`；token/美元双阈值预算门禁 + 每分钟请求限流；`runtime/backup.py` 备份 agent.db/settings/sessions 并支持校验，沙箱后置） |
 
 ---
 
@@ -67,6 +67,7 @@ misc:      listTools / previewPrompt / prompt / cancel / listSessions / ...
 - 多租户与账号体系（product.md D8：已从范围移除，回归远期评估）
 - 移动端、X DM
 - 单用户鉴权与公网部署加固
+- 备份已有实现（`runtime/backup.py`），但尚未提供 CLI 子命令；恢复按「拷贝回状态目录」执行
 
 ---
 
@@ -74,7 +75,7 @@ misc:      listTools / previewPrompt / prompt / cancel / listSessions / ...
 
 | 检查 | 命令 | 结果 |
 |---|---|---|
-| 后端单测 | `uv run pytest -q` | **187 passed**（需清空代理变量，见下） |
+| 后端单测 | `uv run pytest -q` | **192 passed**（需清空代理变量，见下） |
 | 类型检查 | `uv run pyright` | 0 errors |
 | Lint / 格式 | `uv run ruff check` / `format --check` | 通过 |
 | Web 单测 | `pnpm test:unit --run` | **59 passed** |

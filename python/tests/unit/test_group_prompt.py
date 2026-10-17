@@ -124,6 +124,17 @@ class FakeAdapter:
 
 
 class TestRunRecords:
+    def test_rate_limit_blocks_after_the_cap(self, server: WsGatewayServer) -> None:
+        coder = server._bots.create("Coder", slug="coder")
+        server._settings = Settings(max_requests_per_minute=2)
+
+        assert server._rate_error(coder.id) is None
+        assert server._rate_error(coder.id) is None
+        assert server._rate_error(coder.id) is not None
+
+        server._settings = Settings(max_requests_per_minute=0)
+        assert server._rate_error(coder.id) is None
+
     def test_preview_prompt_includes_persona(self, server: WsGatewayServer) -> None:
         bot = server._bots.create("Coder", slug="coder", persona="你说话很简短。")
 

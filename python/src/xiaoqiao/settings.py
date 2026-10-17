@@ -82,6 +82,7 @@ class Settings:
     max_turns: int = 25
     daily_token_budget: int = 0
     daily_budget_usd: float = 0.0
+    max_requests_per_minute: int = 0
     mcp_servers: dict[str, Any] = field(default_factory=dict)
     workflow_loop: bool = True
     tool_approval: dict[str, Any] = field(
@@ -180,6 +181,10 @@ def load() -> Settings:
             s.daily_budget_usd = float(data["dailyBudgetUsd"] or 0)
         elif "daily_budget_usd" in data:
             s.daily_budget_usd = float(data["daily_budget_usd"] or 0)
+        if "maxRequestsPerMinute" in data:
+            s.max_requests_per_minute = int(data["maxRequestsPerMinute"] or 0)
+        elif "max_requests_per_minute" in data:
+            s.max_requests_per_minute = int(data["max_requests_per_minute"] or 0)
         if "mcpServers" in data:
             s.mcp_servers = data["mcpServers"]
         elif "mcp_servers" in data:
@@ -212,6 +217,7 @@ def save(s: Settings) -> None:
         "max_turns": s.max_turns,
         "dailyTokenBudget": s.daily_token_budget,
         "dailyBudgetUsd": s.daily_budget_usd,
+        "maxRequestsPerMinute": s.max_requests_per_minute,
         "mcpServers": s.mcp_servers,
         "workflowLoop": s.workflow_loop,
         "toolApproval": s.tool_approval,
