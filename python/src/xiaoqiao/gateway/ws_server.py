@@ -643,6 +643,11 @@ class WsGatewayServer:
                                     "costUsd": window.cost_usd,
                                     "runs": window.runs,
                                 },
+                                "byModel": self._usage.by_model(since=since, bot_id=bot_id),
+                                "budget": {
+                                    "dailyTokens": int(getattr(self._settings, "daily_token_budget", 0) or 0),
+                                    "dailyUsd": float(getattr(self._settings, "daily_budget_usd", 0.0) or 0.0),
+                                },
                             },
                         )
                     except Exception as exc:

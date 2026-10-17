@@ -61,6 +61,18 @@ class TestUsageRepository:
 
         assert usage.today(bot_id=bot_id).total_tokens == 5
 
+    def test_by_model_groups_and_orders(self, env: tuple[UsageRepository, str]) -> None:
+        usage, bot_id = env
+        usage.record(bot_id, "model-a", input_tokens=10, output_tokens=10)
+        usage.record(bot_id, "model-b", input_tokens=100, output_tokens=100)
+        usage.record(bot_id, "model-a", input_tokens=5, output_tokens=5)
+
+        rows = usage.by_model()
+
+        assert [row["model"] for row in rows] == ["model-b", "model-a"]
+        assert rows[1]["tokens"] == 30
+        assert rows[1]["runs"] == 2
+
     def test_zero_and_negative_tokens_are_clamped(self, env: tuple[UsageRepository, str]) -> None:
         usage, bot_id = env
         usage.record(bot_id, "m", input_tokens=-5, output_tokens=0)

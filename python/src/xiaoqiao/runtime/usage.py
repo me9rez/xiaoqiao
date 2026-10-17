@@ -126,6 +126,41 @@ class UsageRepository:
         start = datetime.combine(moment.astimezone(UTC).date(), time.min, tzinfo=UTC)
         return self.summary(since=start, bot_id=bot_id)
 
+    def by_model(
+        self,
+        *,
+        since: datetime | None = None,
+        bot_id: str | None = None,
+        limit: int = 10,
+    ) -> list[dict[str, Any]]:
+        query = (
+            "SELECT model, COALESCE(SUM(input_tokens + output_tokens), 0) AS tokens, "
+            "COALESCE(SUM(cost_usd), 0) AS cost, COUNT(*) AS runs FROM usage_events"
+        )
+        clauses: list[str] = []
+        values: list[Any] = []
+        if since is not None:
+            clauses.append("created_at >= ?")
+            values.append(since.astimezone(UTC).isoformat())
+        if bot_id is not None:
+            clauses.append("bot_id = ?")
+            values.append(bot_id)
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
+        query += " GROUP BY model ORDER BY tokens DESC LIMIT ?"
+        values.append(limit)
+        with self._connect() as conn:
+            rows = conn.execute(query, values).fetchall()
+        return [
+            {
+                "model": row["model"],
+                "tokens": int(row["tokens"]),
+                "costUsd": float(row["cost"]),
+                "runs": int(row["runs"]),
+            }
+            for row in rows
+        ]
+
 
 def budget_exceeded(
     summary: UsageSummary,
