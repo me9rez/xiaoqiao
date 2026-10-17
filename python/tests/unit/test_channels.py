@@ -37,6 +37,15 @@ class TestChannelRepository:
         assert updated.enabled is False
         assert channels.list(enabled_only=True) == []
 
+    def test_update_merges_config(self, env: tuple[ChannelRepository, str]) -> None:
+        channels, bot_id = env
+        channel = channels.create(bot_id, "telegram", {"token": "T", "chatId": "1"})
+
+        updated = channels.update(channel.id, config={"chatId": "2"})
+
+        assert updated is not None
+        assert updated.config == {"token": "T", "chatId": "2"}
+
     def test_delete(self, env: tuple[ChannelRepository, str]) -> None:
         channels, bot_id = env
         channel = channels.create(bot_id, "telegram", {})

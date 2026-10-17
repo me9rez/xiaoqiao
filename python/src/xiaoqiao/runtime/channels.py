@@ -123,8 +123,10 @@ class ChannelRepository:
         updates: list[str] = []
         values: list[Any] = []
         if "config" in fields:
+            existing = self.get(channel_id)
+            merged = {**(existing.config if existing else {}), **(fields["config"] or {})}
             updates.append("config_json = ?")
-            values.append(json.dumps(fields["config"] or {}, ensure_ascii=False))
+            values.append(json.dumps(merged, ensure_ascii=False))
         if "enabled" in fields:
             updates.append("enabled = ?")
             values.append(1 if fields["enabled"] else 0)
