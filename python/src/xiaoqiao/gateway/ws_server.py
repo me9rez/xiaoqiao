@@ -40,6 +40,7 @@ from xiaoqiao.mcp import (
     uninstall_connector,
     update_connector_config,
 )
+from xiaoqiao.runtime.approvals import ApprovalBroker, approval_to_dict
 from xiaoqiao.runtime.group_chat import GroupChatService, render_group_context
 from xiaoqiao.runtime.group_messages import GroupMessageRepository, message_to_dict
 from xiaoqiao.runtime.sessions import SessionRepository
@@ -230,6 +231,7 @@ class WsGatewayServer:
         self._groups = GroupRepository()
         self._group_messages = GroupMessageRepository()
         self._sessions_db = SessionRepository()
+        self._approvals = ApprovalBroker()
         self._session: Any = None
         self._ws: ServerConnection | None = None
         self._emit_tasks: list[asyncio.Task[None]] = []
@@ -555,16 +557,43 @@ class WsGatewayServer:
                     except Exception as exc:
                         logger.exception("listGroupMessages failed")
                         self._send_rpc_error(request_id, str(exc))
+                elif method == "listApprovals":
+                    try:
+                        items = self._approvals.list(status=params.get("status") or None)
+                        self._send_rpc_response(request_id, [approval_to_dict(item) for item in items])
+                    except Exception as exc:
+                        logger.exception("listApprovals failed")
+                        self._send_rpc_error(request_id, str(exc))
                 elif method == "approval_response":
                     call_id = params.get("callId", "")
                     approved = bool(params.get("approved", False))
                     session_id = params.get("sessionId", "")
-                    if call_id in self._pending_approvals:
-                        task = asyncio.create_task(self._resume_approval(call_id, approved))
-                        if session_id:
-                            self._current_tasks[session_id] = task
+                    approval, reason = self._approvals.resolve(call_id=call_id, approved=approved)
+                    if reason != "ok":
+                        self._send_rpc_error(request_id, f"Cannot resolve approval: {reason}")
                     else:
-                        self._send_rpc_error(request_id, f"No pending approval: {call_id}")
+                        self._broadcast_approval_resolved(approval)
+                        if call_id in self._pending_approvals:
+                            task = asyncio.create_task(self._resume_approval(call_id, approved))
+                            if session_id:
+                                self._current_tasks[session_id] = task
+                        else:
+                            self._send_rpc_response(
+                                request_id, {"ok": True, "status": approval.status if approval else ""}
+                            )
+                elif method == "resolveApproval":
+                    approval_id = params.get("approvalId", "")
+                    approved = bool(params.get("approved", False))
+                    approval, reason = self._approvals.resolve(approval_id=approval_id, approved=approved)
+                    if reason != "ok":
+                        self._send_rpc_error(request_id, f"Cannot resolve approval: {reason}")
+                    else:
+                        self._broadcast_approval_resolved(approval)
+                        if approval is not None and approval.call_id in self._pending_approvals:
+                            task = asyncio.create_task(self._resume_approval(approval.call_id, approved))
+                            self._emit_tasks.append(task)
+                            task.add_done_callback(self._emit_tasks.remove)
+                        self._send_rpc_response(request_id, {"ok": True, "status": approval.status if approval else ""})
                 elif method == "listSkills":
                     try:
                         skills = list_skills()
@@ -873,10 +902,12 @@ class WsGatewayServer:
 
             if outcome.pending_approval is not None:
                 pending = outcome.pending_approval
+                approval = self._record_approval(pending, bot)
                 self._pending_approvals[pending.call_id] = {
                     "runtime": runtime,
                     "pending": pending,
                     "session": session,
+                    "approval_id": approval.id,
                 }
                 self._remember_runtime(session, runtime)
                 save_session(session)
@@ -970,14 +1001,60 @@ class WsGatewayServer:
         save_framework_session(runtime.agent_session)
         if outcome.pending_approval is not None:
             pending = outcome.pending_approval
+            approval = self._record_approval(pending, bot, group_id=group_id)
             self._pending_approvals[pending.call_id] = {
                 "runtime": runtime,
                 "pending": pending,
                 "session": session,
                 "group_id": group_id,
+                "approval_id": approval.id,
             }
             return "（需要你审批后才能继续）"
         return outcome.text
+
+    def _record_approval(self, pending: PendingApproval, bot: Any, *, group_id: str = "") -> Any:
+        """Persist the approval and announce it with the durable approval id."""
+        run_id = self._approvals.create_run(
+            bot.id,
+            group_id=group_id or None,
+            trigger="group" if group_id else "web",
+        )
+        approval = self._approvals.create(
+            run_id,
+            pending.call_id,
+            bot.id,
+            pending.name,
+            pending.arguments,
+            group_id=group_id or None,
+        )
+        self._broadcast(
+            {
+                "type": "approval_requested",
+                "approvalId": approval.id,
+                "callId": pending.call_id,
+                "botId": bot.id,
+                "groupId": group_id or None,
+                "runId": run_id,
+                "tool": pending.name,
+                "arguments": pending.arguments,
+                "expiresAt": approval.expires_at,
+            }
+        )
+        return approval
+
+    def _broadcast_approval_resolved(self, approval: Any) -> None:
+        if approval is None:
+            return
+        self._broadcast(
+            {
+                "type": "approval_resolved",
+                "approvalId": approval.id,
+                "callId": approval.call_id,
+                "botId": approval.bot_id,
+                "groupId": approval.group_id,
+                "status": approval.status,
+            }
+        )
 
     def _remember_runtime(self, session: Any, runtime: AgentRuntime) -> None:
         """Persist both the display transcript and the framework session state.

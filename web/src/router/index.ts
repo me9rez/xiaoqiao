@@ -34,6 +34,11 @@ const router = createRouter({
       ],
     },
     {
+      path: '/approvals',
+      name: 'approvals',
+      component: () => import('../views/ApprovalsView.vue'),
+    },
+    {
       path: '/toolbox',
       component: () => import('../views/toolbox/ToolboxLayout.vue'),
       redirect: '/toolbox/skills',

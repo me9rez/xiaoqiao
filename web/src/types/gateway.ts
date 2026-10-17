@@ -95,6 +95,27 @@ export interface GroupMessageCreatedEvent extends GatewayEvent {
   message: GroupMessagePayload
 }
 
+export interface ApprovalRequestedEvent extends GatewayEvent {
+  type: 'approval_requested'
+  approvalId: string
+  callId: string
+  botId: string
+  groupId: string | null
+  runId: string
+  tool: string
+  arguments: string
+  expiresAt: string
+}
+
+export interface ApprovalResolvedEvent extends GatewayEvent {
+  type: 'approval_resolved'
+  approvalId: string
+  callId: string
+  botId: string
+  groupId: string | null
+  status: 'approved' | 'denied' | 'expired'
+}
+
 export interface WorkspaceInfo {
   name: string
   path: string
@@ -131,6 +152,8 @@ export type AgentEvent =
   | ReadyEvent
   | RpcResponseEvent
   | GroupMessageCreatedEvent
+  | ApprovalRequestedEvent
+  | ApprovalResolvedEvent
 
 export function isTextDeltaEvent(event: GatewayEvent): event is TextDeltaEvent {
   return event.type === 'text_delta'
@@ -178,6 +201,14 @@ export function isRpcResponseEvent(event: GatewayEvent): event is RpcResponseEve
 
 export function isGroupMessageCreatedEvent(event: GatewayEvent): event is GroupMessageCreatedEvent {
   return event.type === 'group_message_created'
+}
+
+export function isApprovalRequestedEvent(event: GatewayEvent): event is ApprovalRequestedEvent {
+  return event.type === 'approval_requested'
+}
+
+export function isApprovalResolvedEvent(event: GatewayEvent): event is ApprovalResolvedEvent {
+  return event.type === 'approval_resolved'
 }
 
 export function isToolApprovalRequestEvent(event: GatewayEvent): event is ToolApprovalRequestEvent {

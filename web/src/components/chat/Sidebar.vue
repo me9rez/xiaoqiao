@@ -9,6 +9,7 @@ import {
   Loader2,
   Plus,
   Settings,
+  ShieldCheck,
   Upload,
   User,
   Wrench,
@@ -19,6 +20,7 @@ import { RouterLink, useRouter } from 'vue-router'
 import GroupEditorModal from '@/components/groups/GroupEditorModal.vue'
 import GroupList from '@/components/groups/GroupList.vue'
 import { gatewayService } from '@/services/gateway'
+import { useApprovalsStore } from '@/stores/approvals'
 import { useBotsStore } from '@/stores/bots'
 import { useChatStore } from '@/stores/chat'
 import { useSessionsStore } from '@/stores/sessions'
@@ -28,6 +30,7 @@ import type { Group } from '@/types/group'
 const chatStore = useChatStore()
 const sessionsStore = useSessionsStore()
 const botsStore = useBotsStore()
+const approvalsStore = useApprovalsStore()
 const workspaceStore = useWorkspaceStore()
 
 const firstBotId = computed(() => botsStore.bots[0]?.id ?? '')
@@ -222,6 +225,19 @@ function handleRenameKeydown(sessionId: string, event: KeyboardEvent) {
       <RouterLink to="/automation" class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-[var(--text-muted)] hover:bg-[var(--bg-muted)] transition">
         <Zap class="w-4 h-4" />
         <span>自动化</span>
+      </RouterLink>
+      <RouterLink
+        to="/approvals"
+        class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-[var(--text-muted)] hover:bg-[var(--bg-muted)] transition"
+      >
+        <ShieldCheck class="w-4 h-4" />
+        <span class="flex-1">审批</span>
+        <span
+          v-if="approvalsStore.pendingCount > 0"
+          class="px-1.5 py-0.5 rounded-full text-[10px] bg-[var(--color-warning-soft)] text-[var(--color-warning)] border border-[var(--color-warning-bd)]"
+        >
+          {{ approvalsStore.pendingCount }}
+        </span>
       </RouterLink>
     </nav>
 
