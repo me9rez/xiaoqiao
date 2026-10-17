@@ -43,6 +43,7 @@ from xiaoqiao.mcp import (
 from xiaoqiao.runtime.approvals import ApprovalBroker, approval_to_dict
 from xiaoqiao.runtime.group_chat import GroupChatService, render_group_context
 from xiaoqiao.runtime.group_messages import GroupMessageRepository, message_to_dict
+from xiaoqiao.runtime.memory import MemoryRepository, fact_to_dict, note_to_dict
 from xiaoqiao.runtime.routines import RoutineRepository, routine_to_dict
 from xiaoqiao.runtime.sessions import SessionRepository
 from xiaoqiao.scheduler import Scheduler
@@ -236,6 +237,7 @@ class WsGatewayServer:
         self._approvals = ApprovalBroker()
         self._routines = RoutineRepository()
         self._scheduler = Scheduler(self._routines, self._fire_routine)
+        self._memory = MemoryRepository()
         self._session: Any = None
         self._ws: ServerConnection | None = None
         self._emit_tasks: list[asyncio.Task[None]] = []
@@ -596,6 +598,53 @@ class WsGatewayServer:
                     except Exception as exc:
                         logger.exception("toggleRoutine failed")
                         self._send_rpc_error(request_id, str(exc))
+                elif method == "listMemory":
+                    try:
+                        bot_id = params.get("botId", "")
+                        facts = self._memory.list_facts(bot_id)
+                        notes = self._memory.recent_notes(bot_id)
+                        self._send_rpc_response(
+                            request_id,
+                            {
+                                "facts": [fact_to_dict(item) for item in facts],
+                                "notes": [note_to_dict(item) for item in notes],
+                            },
+                        )
+                    except Exception as exc:
+                        logger.exception("listMemory failed")
+                        self._send_rpc_error(request_id, str(exc))
+                elif method == "upsertMemory":
+                    try:
+                        fact = self._memory.upsert_fact(
+                            params.get("botId", ""),
+                            params.get("key", ""),
+                            params.get("value", ""),
+                        )
+                        self._send_rpc_response(request_id, fact_to_dict(fact))
+                    except Exception as exc:
+                        logger.exception("upsertMemory failed")
+                        self._send_rpc_error(request_id, str(exc))
+                elif method == "deleteMemory":
+                    try:
+                        ok = self._memory.delete_fact(params.get("botId", ""), params.get("key", ""))
+                        self._send_rpc_response(request_id, {"ok": ok})
+                    except Exception as exc:
+                        logger.exception("deleteMemory failed")
+                        self._send_rpc_error(request_id, str(exc))
+                elif method == "addMemoryNote":
+                    try:
+                        note = self._memory.add_note(params.get("botId", ""), params.get("text", ""))
+                        self._send_rpc_response(request_id, note_to_dict(note))
+                    except Exception as exc:
+                        logger.exception("addMemoryNote failed")
+                        self._send_rpc_error(request_id, str(exc))
+                elif method == "searchMemory":
+                    try:
+                        hits = self._memory.search_notes(params.get("botId", ""), params.get("query", ""))
+                        self._send_rpc_response(request_id, [note_to_dict(item) for item in hits])
+                    except Exception as exc:
+                        logger.exception("searchMemory failed")
+                        self._send_rpc_error(request_id, str(exc))
                 elif method == "listGroupMessages":
                     try:
                         group_id = params.get("groupId", "")
@@ -926,6 +975,7 @@ class WsGatewayServer:
             BuildSystemPromptOptions(
                 persona=bot.persona,
                 bot_name=bot.name,
+                memory_block=self._memory.build_block(bot.id, query=text),
                 project_context=ctx,
                 mcp_tools_prompt=mcp_tools_prompt,
                 tool_approval=getattr(settings, "tool_approval", None),
@@ -983,6 +1033,13 @@ class WsGatewayServer:
             session = end_session_run(session.id, error=error_occurred) or session
             self._session = session
             save_session(session)
+
+    @staticmethod
+    def _last_user_text(messages: list[Any]) -> str:
+        for message in reversed(messages):
+            if getattr(message, "author_type", "") == "user":
+                return str(getattr(message, "text", ""))
+        return ""
 
     async def _fire_routine(self, routine: Any, scheduled_at: str) -> None:
         self._broadcast(
@@ -1046,6 +1103,7 @@ class WsGatewayServer:
             BuildSystemPromptOptions(
                 persona=bot.persona,
                 bot_name=bot.name,
+                memory_block=self._memory.build_block(bot.id, query=self._last_user_text(messages)),
                 project_context=ctx,
                 mcp_tools_prompt=format_mcp_tools_for_prompt(self._mcp_tools),
                 tool_approval=getattr(settings, "tool_approval", None),

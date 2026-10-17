@@ -42,6 +42,7 @@ class BuildSystemPromptOptions:
     instructions: str | None = None
     persona: str = ""
     bot_name: str = ""
+    memory_block: str = ""
     extra_guidelines: Sequence[str] = field(default_factory=tuple)
     project_context: ProjectContext | None = None
     skills_prompt: str = ""
@@ -177,6 +178,11 @@ def build_system_prompt(options: BuildSystemPromptOptions) -> str:
     if persona:
         name = options.bot_name.strip() or "助理"
         parts.append(f"## 人格：{name}\n{persona}")
+
+    # Long-term memory (facts + related notes), already budgeted by the caller.
+    memory = options.memory_block.strip()
+    if memory:
+        parts.append(memory)
 
     # Current date
     today = date.today()
