@@ -1,15 +1,39 @@
 <script setup lang="ts">
-import { CheckCircle2, ChevronDown, ChevronRight, ExternalLink, Folder, FolderOpen, History, List, Lightbulb, Wrench } from '@lucide/vue'
-import { computed, ref } from 'vue'
+import { CheckCircle2, ChevronDown, ChevronRight, ExternalLink, Folder, FolderOpen, History, List, Lightbulb, Package, Wrench } from '@lucide/vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useArtifactsStore } from '@/stores/artifacts'
+import { useBotsStore } from '@/stores/bots'
 import { useChatStore } from '@/stores/chat'
 import { useWorkspaceStore } from '@/stores/workspace'
 
 const chatStore = useChatStore()
 const workspaceStore = useWorkspaceStore()
+const artifactsStore = useArtifactsStore()
+const botsStore = useBotsStore()
 
 const progressExpanded = ref(true)
 const workspaceExpanded = ref(true)
+const artifactsExpanded = ref(true)
 const opsExpanded = ref(true)
+
+onMounted(() => {
+  artifactsStore.listen()
+  if (botsStore.activeBotId) void artifactsStore.load(botsStore.activeBotId)
+})
+
+watch(
+  () => botsStore.activeBotId,
+  (botId) => {
+    if (botId) void artifactsStore.load(botId)
+  },
+)
+
+function formatSize(size: number | null): string {
+  if (!size) return ''
+  if (size < 1024) return `${size} B`
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
+  return `${(size / 1024 / 1024).toFixed(1)} MB`
+}
 
 const recentOps = computed(() => {
   return chatStore.messages
@@ -106,6 +130,40 @@ const toolUsage = computed(() => {
           <span class="text-[var(--text-subtle)]">🧠</span>
           <span>项目记忆 · 暂无</span>
         </button>
+      </div>
+    </div>
+
+    <!-- 产物 -->
+    <div class="border-b border-[var(--color-line)]">
+      <button
+        class="w-full flex items-center justify-between px-4 py-3 hover:bg-[var(--color-hover)] transition"
+        @click="artifactsExpanded = !artifactsExpanded"
+      >
+        <div class="flex items-center gap-2 text-sm font-medium">
+          <Package class="w-4 h-4 text-[var(--color-text-muted)]" />
+          <span>产物</span>
+          <span v-if="artifactsStore.items.length" class="text-xs text-[var(--color-text-muted)]">
+            {{ artifactsStore.items.length }}
+          </span>
+        </div>
+        <ChevronDown
+          class="w-4 h-4 text-[var(--color-text-muted)] transition-transform"
+          :class="artifactsExpanded ? '' : '-rotate-90'"
+        />
+      </button>
+      <div v-show="artifactsExpanded" class="px-4 pb-4 space-y-1.5">
+        <div v-if="artifactsStore.items.length === 0" class="text-[13px] text-[var(--color-text-muted)]">
+          这个 Bot 还没有产出文件
+        </div>
+        <div
+          v-for="artifact in artifactsStore.items.slice(0, 6)"
+          :key="artifact.id"
+          class="flex items-center gap-2 px-2.5 py-2 rounded-[var(--radius-md)] bg-[var(--color-surface)]"
+          :title="artifact.path"
+        >
+          <span class="text-[12px] text-[var(--color-text)] truncate flex-1">{{ artifact.path }}</span>
+          <span class="text-[11px] text-[var(--color-text-faint)] shrink-0">{{ formatSize(artifact.size) }}</span>
+        </div>
       </div>
     </div>
 

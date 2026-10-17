@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -44,6 +45,19 @@ class TestGroupPromptWiring:
         sessions = server._sessions_db.list(group_id=group.id)
         assert len(sessions) == 1
         assert sessions[0].last_seen_seq == messages[-1].seq
+
+    def test_scan_artifacts_indexes_new_files(self, server: WsGatewayServer, tmp_path: Path) -> None:
+        workspace = tmp_path / "ws"
+        workspace.mkdir()
+        bot = server._bots.create("Writer", workspace=str(workspace))
+        started = datetime.now(UTC)
+        (workspace / "out.md").write_text("hello", encoding="utf-8")
+
+        server._scan_artifacts(bot, started)
+
+        artifacts = server._artifacts.list(bot_id=bot.id)
+        assert [artifact.path for artifact in artifacts] == ["out.md"]
+        assert artifacts[0].mime == "text/markdown"
 
     @pytest.mark.asyncio
     async def test_routine_posts_into_its_group(self, server: WsGatewayServer) -> None:

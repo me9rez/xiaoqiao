@@ -116,6 +116,14 @@ export interface ApprovalResolvedEvent extends GatewayEvent {
   status: 'approved' | 'denied' | 'expired'
 }
 
+export interface ArtifactCreatedEvent extends GatewayEvent {
+  type: 'artifact_created'
+  artifactId: string
+  botId: string
+  groupId: string | null
+  artifact: import('./artifact').Artifact
+}
+
 export interface RoutineFiredEvent extends GatewayEvent {
   type: 'routine_fired'
   routineId: string
@@ -163,6 +171,7 @@ export type AgentEvent =
   | ApprovalRequestedEvent
   | ApprovalResolvedEvent
   | RoutineFiredEvent
+  | ArtifactCreatedEvent
 
 export function isTextDeltaEvent(event: GatewayEvent): event is TextDeltaEvent {
   return event.type === 'text_delta'
@@ -222,6 +231,10 @@ export function isApprovalResolvedEvent(event: GatewayEvent): event is ApprovalR
 
 export function isRoutineFiredEvent(event: GatewayEvent): event is RoutineFiredEvent {
   return event.type === 'routine_fired'
+}
+
+export function isArtifactCreatedEvent(event: GatewayEvent): event is ArtifactCreatedEvent {
+  return event.type === 'artifact_created'
 }
 
 export function isToolApprovalRequestEvent(event: GatewayEvent): event is ToolApprovalRequestEvent {

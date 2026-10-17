@@ -10,6 +10,7 @@ import asyncio
 import json
 import logging
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -41,6 +42,7 @@ from xiaoqiao.mcp import (
     update_connector_config,
 )
 from xiaoqiao.runtime.approvals import ApprovalBroker, approval_to_dict
+from xiaoqiao.runtime.artifacts import ArtifactRepository, artifact_to_dict
 from xiaoqiao.runtime.group_chat import GroupChatService, render_group_context
 from xiaoqiao.runtime.group_messages import GroupMessageRepository, message_to_dict
 from xiaoqiao.runtime.memory import MemoryRepository, fact_to_dict, note_to_dict
@@ -238,6 +240,7 @@ class WsGatewayServer:
         self._routines = RoutineRepository()
         self._scheduler = Scheduler(self._routines, self._fire_routine)
         self._memory = MemoryRepository()
+        self._artifacts = ArtifactRepository()
         self._session: Any = None
         self._ws: ServerConnection | None = None
         self._emit_tasks: list[asyncio.Task[None]] = []
@@ -597,6 +600,17 @@ class WsGatewayServer:
                             self._send_rpc_response(request_id, routine_to_dict(routine))
                     except Exception as exc:
                         logger.exception("toggleRoutine failed")
+                        self._send_rpc_error(request_id, str(exc))
+                elif method == "listArtifacts":
+                    try:
+                        items = self._artifacts.list(
+                            bot_id=params.get("botId") or None,
+                            run_id=params.get("runId") or None,
+                            limit=int(params.get("limit", 100)),
+                        )
+                        self._send_rpc_response(request_id, [artifact_to_dict(item) for item in items])
+                    except Exception as exc:
+                        logger.exception("listArtifacts failed")
                         self._send_rpc_error(request_id, str(exc))
                 elif method == "listMemory":
                     try:
@@ -1001,7 +1015,9 @@ class WsGatewayServer:
             client = self._client_for(session_model)
 
             runtime = self._runtime_for(session, client, sys_prompt, options, settings, approval_enabled)
+            run_started = datetime.now(UTC)
             outcome = await runtime.run_turn(text, _on_event)
+            self._scan_artifacts(bot, run_started)
 
             if outcome.pending_approval is not None:
                 pending = outcome.pending_approval
@@ -1033,6 +1049,26 @@ class WsGatewayServer:
             session = end_session_run(session.id, error=error_occurred) or session
             self._session = session
             save_session(session)
+
+    def _scan_artifacts(self, bot: Any, started_at: datetime, *, group_id: str = "") -> None:
+        """Index files the turn produced, but only for bots with a real workspace."""
+        if not getattr(bot, "workspace", ""):
+            return
+        try:
+            found = self._artifacts.scan_workspace(bot.id, bot.workspace, since=started_at)
+        except Exception:
+            logger.exception("Artifact scan failed for bot %s", bot.id)
+            return
+        for artifact in found:
+            self._broadcast(
+                {
+                    "type": "artifact_created",
+                    "artifactId": artifact.id,
+                    "botId": bot.id,
+                    "groupId": group_id or None,
+                    "artifact": artifact_to_dict(artifact),
+                }
+            )
 
     @staticmethod
     def _last_user_text(messages: list[Any]) -> str:
@@ -1126,7 +1162,9 @@ class WsGatewayServer:
             settings,
             bool(getattr(settings, "tool_approval", {}).get("enabled", True)) if settings else True,
         )
+        run_started = datetime.now(UTC)
         outcome = await runtime.run_turn(prompt_block, _on_event)
+        self._scan_artifacts(bot, run_started, group_id=group_id)
         save_framework_session(runtime.agent_session)
         if outcome.pending_approval is not None:
             pending = outcome.pending_approval
