@@ -8,9 +8,11 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+from xiaoqiao.paths import config_dir
+
 
 def _automation_dir() -> Path:
-    d = Path.home() / ".coding-agent" / "automation"
+    d = config_dir() / "automation"
     d.mkdir(parents=True, exist_ok=True)
     return d
 

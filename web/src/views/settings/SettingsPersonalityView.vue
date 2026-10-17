@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 
-const STORAGE_KEY = 'coding-agent:personality'
+const STORAGE_KEY = 'xiaoqiao:personality'
+const LEGACY_STORAGE_KEY = 'coding-agent:personality'
 const MAX_LENGTH = 2000
 
 type Proactivity = 'shy' | 'partner' | 'butler'
@@ -19,14 +20,18 @@ const charCount = computed(() => content.value.length)
 
 function load() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
+    const raw = localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(LEGACY_STORAGE_KEY)
     if (raw) {
       const data = JSON.parse(raw)
+      if (localStorage.getItem(STORAGE_KEY) === null) {
+        localStorage.setItem(STORAGE_KEY, raw)
+        localStorage.removeItem(LEGACY_STORAGE_KEY)
+      }
       proactivity.value = data.proactivity ?? 'partner'
       content.value = data.content ?? ''
     } else {
       proactivity.value = 'partner'
-      content.value = `# 语气\n你说话简洁直接，像一个靠谱的朋友在帮忙。不用敬语，不用"您"。\n\n# 称呼\n你叫"Coding Agent"，称用户"你"\n\n# 回复风格\n- 先给结论或结果，过程按需展开\n- 遇到不确定的直接说，不要硬编\n- 中文回复为主\n\n# 边界\n（在这里写不希望 Coding Agent 做的事）`
+      content.value = `# 语气\n你说话简洁直接，像一个靠谱的朋友在帮忙。不用敬语，不用"您"。\n\n# 称呼\n你叫"小巧"，称用户"你"\n\n# 回复风格\n- 先给结论或结果，过程按需展开\n- 遇到不确定的直接说，不要硬编\n- 中文回复为主\n\n# 边界\n（在这里写不希望小巧做的事）`
     }
   } catch {
     // ignore
@@ -36,6 +41,7 @@ function load() {
 function save() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ proactivity: proactivity.value, content: content.value }))
+    localStorage.removeItem(LEGACY_STORAGE_KEY)
   } catch {
     // ignore
   }
@@ -53,7 +59,7 @@ watch([proactivity, content], save, { deep: true })
         性格
       </h1>
       <p class="text-sm text-[var(--text-muted)] mt-1">
-        Coding Agent 出厂自带性格，你可以按自己的喜好调整
+        小巧出厂自带性格，你可以按自己的喜好调整
       </p>
     </div>
 
@@ -62,7 +68,7 @@ watch([proactivity, content], save, { deep: true })
         主动度
       </h2>
       <p class="text-sm text-[var(--text-muted)] mb-4">
-        Coding Agent 在对话中要不要主动提议沉淀技能。害羞只在你明说时才建，伙伴明确可帮上时主动提议（推荐），管家每次成功任务都考虑提议。
+        小巧在对话中要不要主动提议沉淀技能。害羞只在你明说时才建，伙伴明确可帮上时主动提议（推荐），管家每次成功任务都考虑提议。
       </p>
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <button
@@ -93,7 +99,7 @@ watch([proactivity, content], save, { deep: true })
       />
       <div class="flex items-center justify-between mt-3">
         <span class="text-xs text-[var(--text-subtle)]">
-          文件位置：~/.coding-agent/SOUL.md（高级用户可直接编辑）
+          文件位置：~/.xiaoqiao/SOUL.md（高级用户可直接编辑）
         </span>
         <span class="text-xs text-[var(--text-subtle)]">
           {{ charCount }} / {{ MAX_LENGTH }}

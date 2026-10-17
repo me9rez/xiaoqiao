@@ -1,7 +1,7 @@
 # Agent 实现重构技术方案
 
 > 状态：**阶段零/一/二已完成**（迁移到 `create_harness_agent`）；阶段三及以后待办
-> 范围：`python/src/coding_agent/` 的 agent 运行时层（runtime / gateway）
+> 范围：`python/src/xiaoqiao/` 的 agent 运行时层（runtime / gateway）
 > 相关文档：`docs/proposal.md`（原始设计，部分内容已过时）、`docs/protocol.md`
 
 ---
@@ -180,7 +180,7 @@ agent_framework 公开导出总数: 331
 
 ### P0-1 默认路径无上下文压缩
 
-**事实**：`compaction_max_tokens` 只传给 `run_coding_agent`：
+**事实**：`compaction_max_tokens` 只传给 `run_xiaoqiao`：
 
 ```
 main.py:246        compaction_max_tokens=max_tok,
@@ -546,7 +546,7 @@ class ConsoleObserver:
 ```bash
 uv run python -c "
 import agent_framework as af
-from coding_agent.settings import _FakeClient
+from xiaoqiao.settings import _FakeClient
 print(isinstance(_FakeClient(), af.SupportsChatGetResponse))  # 应为 True
 "
 ```
@@ -585,7 +585,7 @@ uv run pyright src/
 uv run pytest -q
 # 新增：thinking 原生 content 类型单测
 # 新增：compaction 触发单测（或确认由 harness 接管）
-python -m coding_agent.main --test "prompt"   # 需真实 API key
+python -m xiaoqiao.main --test "prompt"   # 需真实 API key
 ```
 
 #### 阶段三：HITL 收敛（**前置验证，未验证不得动手**）
@@ -761,7 +761,7 @@ print('missing:', missing or 'none')
 # 2) 自研中间件能否与 harness 中间件链叠加
 uv run python -c "
 import agent_framework as af
-from coding_agent.loop import ToolEventMiddleware
+from xiaoqiao.loop import ToolEventMiddleware
 class C:
     additional_properties = {}
     def get_response(self, *a, **k): raise NotImplementedError
@@ -774,7 +774,7 @@ print([type(m).__name__ for m in a.middleware])
 # 3) _FakeClient 协议合规性（T0.1）
 uv run python -c "
 import agent_framework as af
-from coding_agent.settings import _FakeClient
+from xiaoqiao.settings import _FakeClient
 print('compliant:', isinstance(_FakeClient(), af.SupportsChatGetResponse))
 "
 

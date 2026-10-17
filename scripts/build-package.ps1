@@ -2,7 +2,7 @@
 #requires -Version 7.0
 <#
 .SYNOPSIS
-    构建包含 web 前端资源的 coding-agent wheel 包。
+    构建包含 web 前端资源的 xiaoqiao wheel 包。
 
 .DESCRIPTION
     - 构建 web 前端（pnpm install + pnpm build）
@@ -39,7 +39,6 @@ function Invoke-Step($Message, [scriptblock]$Action) {
 # --- prerequisites ---
 Assert-Command "pnpm"
 Assert-Command "uv"
-Assert-Command "python"
 
 # --- build web frontend ---
 Invoke-Step "安装 web 依赖" {
@@ -66,7 +65,7 @@ if (-not (Test-Path (Join-Path $webDist "index.html"))) {
 }
 
 # --- stage web assets into python package ---
-$bundleDir = Join-Path $pythonDir "src" "coding_agent" "web_dist"
+$bundleDir = Join-Path $pythonDir "src" "xiaoqiao" "web_dist"
 if (Test-Path $bundleDir) {
     Invoke-Step "清理已打包的 web 资源" {
         Remove-Item -Recurse -Force $bundleDir
@@ -96,13 +95,13 @@ try {
     }
 
     # --- verify wheel contents ---
-    $wheel = Get-ChildItem -Path $pythonDist -Filter "coding_agent-*.whl" | Select-Object -First 1
+    $wheel = Get-ChildItem -Path $pythonDist -Filter "xiaoqiao-*.whl" | Select-Object -First 1
     if (-not $wheel) {
         throw "在 $pythonDist 中未找到 wheel"
     }
 
     Invoke-Step "校验 wheel 内容" {
-        $entries = python -m zipfile -l $wheel.FullName | Select-String "coding_agent/web_dist/index.html"
+        $entries = uv run --project $pythonDir python -m zipfile -l $wheel.FullName | Select-String "xiaoqiao/web_dist/index.html"
         if (-not $entries) {
             throw "在 $($wheel.FullName) 中未找到打包的 web 资源"
         }

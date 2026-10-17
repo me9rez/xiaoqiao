@@ -1,6 +1,7 @@
-"""Entry point for the coding agent gateway.
+"""Entry point for the 小巧 gateway.
 
-Configuration is loaded from ``~/.coding-agent/settings.json``.
+Configuration is loaded from ``~/.xiaoqiao/settings.json`` (legacy
+``~/.xiaoqiao/settings.json`` is still honoured).
 CLI flags and environment variables override file values.
 """
 
@@ -15,17 +16,17 @@ import sys
 from importlib import resources
 from pathlib import Path
 
-from coding_agent.mcp import create_mcp_tools, format_mcp_tools_for_prompt
-from coding_agent.settings import (
+from xiaoqiao.mcp import create_mcp_tools, format_mcp_tools_for_prompt
+from xiaoqiao.settings import (
     Settings,
     _split_selected_model,
     build_client,
     thinking_level,
 )
-from coding_agent.settings import load as load_settings
-from coding_agent.skills import create_skills_provider
-from coding_agent.tools.coding_tools import create_coding_tools
-from coding_agent.web_server import run_static_server
+from xiaoqiao.settings import load as load_settings
+from xiaoqiao.skills import create_skills_provider
+from xiaoqiao.tools.coding_tools import create_coding_tools
+from xiaoqiao.web_server import run_static_server
 
 logger = logging.getLogger(__name__)
 
@@ -33,12 +34,12 @@ logger = logging.getLogger(__name__)
 def _default_web_root() -> str:
     """Return the bundled web frontend directory, falling back to the repo layout in dev.
 
-    When installed as a wheel, the frontend is shipped under ``coding_agent/web_dist``
+    When installed as a wheel, the frontend is shipped under ``xiaoqiao/web_dist``
     via hatchling force-include. During development it falls back to the repository's
     ``web/dist`` directory.
     """
     try:
-        root = resources.files("coding_agent") / "web_dist"
+        root = resources.files("xiaoqiao") / "web_dist"
         if root.is_dir():
             return str(root)
     except Exception:
@@ -47,7 +48,7 @@ def _default_web_root() -> str:
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Coding agent gateway")
+    parser = argparse.ArgumentParser(description="小巧（Xiaoqiao）gateway")
     parser.add_argument("--log-level", default="WARNING", help="Logging level")
     parser.add_argument("--test", nargs="*", default=None, help="Run one prompt in CLI test mode")
     parser.add_argument("--model", default=None, help="Override model (default: settings.json)")
@@ -124,9 +125,9 @@ async def _run_test_mode(prompt: str, settings: Settings) -> None:
     Exercises the same runtime the gateways use, so this is a real integration
     check of the harness path rather than a separate code path.
     """
-    from coding_agent.agent_runtime import AgentRuntime
-    from coding_agent.framework_session import get_or_create_framework_session, save_framework_session
-    from coding_agent.system_prompt import (
+    from xiaoqiao.agent_runtime import AgentRuntime
+    from xiaoqiao.framework_session import get_or_create_framework_session, save_framework_session
+    from xiaoqiao.system_prompt import (
         BuildSystemPromptOptions,
         build_system_prompt,
         discover_project_context,
@@ -243,7 +244,7 @@ async def _async_main(settings: Settings, ws_port: int | None = None) -> None:
 
     loop.set_exception_handler(_handler)
 
-    from coding_agent.session import _SESSIONS_DIR
+    from xiaoqiao.session import _SESSIONS_DIR
 
     print(f"Gateway starting, sessions → {_SESSIONS_DIR}", file=sys.stderr, flush=True)
 
@@ -251,7 +252,7 @@ async def _async_main(settings: Settings, ws_port: int | None = None) -> None:
     mcp_tools = create_mcp_tools(settings)
 
     if ws_port:
-        from coding_agent.gateway.ws_server import WsGatewayServer
+        from xiaoqiao.gateway.ws_server import WsGatewayServer
 
         server = WsGatewayServer(
             tools=create_coding_tools(approval_config=settings.tool_approval),
@@ -262,8 +263,8 @@ async def _async_main(settings: Settings, ws_port: int | None = None) -> None:
         )
         await server.run_forever()
     else:
-        from coding_agent.gateway.server import GatewayServer
-        from coding_agent.gateway.transport import StdioTransport
+        from xiaoqiao.gateway.server import GatewayServer
+        from xiaoqiao.gateway.transport import StdioTransport
 
         server = GatewayServer(
             client=_build_client(settings),

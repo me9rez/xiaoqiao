@@ -1,4 +1,4 @@
-# Coding Agent — AGENTS.md
+# 小巧（Xiaoqiao）— AGENTS.md
 
 ## 仓库结构
 
@@ -53,19 +53,27 @@ agent 运行时基于 agent-framework 的 `create_harness_agent`（函数调用�
 
 **集成测试**（需真实 API key）：
 ```bash
-uv run python -m coding_agent.main --test "列出当前目录文件"
+uv run python -m xiaoqiao.main --test "列出当前目录文件"
 ```
 
 ### 其他
 
 - 构建系统：hatchling，依赖管理：uv（不是 pip）
 - Ruff 配置：line-length 120，双引号，target py314
-- Python 入口：`coding_agent.main:main`
-- 包名 `coding_agent`，源码在 `python/src/`，必须让 PYTHONPATH 包含此路径
+- Python 入口：`xiaoqiao.main:main`
+- 发行名与导入包均为 `xiaoqiao`，源码在 `python/src/`，必须让 PYTHONPATH 包含此路径
 - API key 优先级：settings.json > `DEEPSEEK_API_KEY` 环境变量 > `OPENAI_API_KEY`
 - 添加工具：在 `tools/coding_tools.py` 写 async 函数，在 `create_coding_tools()` 注册 `FunctionTool`，参数名和 docstring 自动转 JSON schema
 
 ## Web 层
+
+### 设计规范（硬性）
+
+- UI 改动前先读 `docs/design.md`，它是对 `web/` 有约束力的设计依据。
+- 设计值只在 `web/src/styles/tokens.css` 定义；组件内写 `var(--token)`，禁止写死颜色。
+- 主题与字号由 `html[data-color-scheme]` / `html[data-font-scale]` 驱动，逻辑在 `web/src/theme.ts`。
+- 旧变量（`--bg-page`、`--border`、`--bg-card` 等）仅作迁移兼容，新代码不要使用。
+- 暗色只覆盖语义 token，不要在组件里写 `dark:` 分支复制一套颜色。
 
 ```bash
 cd web
@@ -101,33 +109,35 @@ pnpm preview               # 预览构建产物
 ### 其他
 
 - 前端入口：`src/main.ts`（Vue 3 + Pinia + Vue Router）
-- `gatewayClient.ts` 中 `pythonSrc` 硬编码为 `C:/code/repo/coding-agent/python/src` —— 仓库路径变更时需要更新
+- Web 端通过 WebSocket（`ws://127.0.0.1:8765`，见 `web/src/services/gateway.ts`）连接网关，不直接启动 Python 进程
 - 网关协议：websocket（详见 `docs/protocol.md`）
 
 ## 配置
 
-所有配置在 `~/.coding-agent/settings.json`，支持 model/base_url/api_key/thinking_level/token budgets/max_turns。
+所有配置在 `~/.xiaoqiao/settings.json`，支持 model/base_url/api_key/thinking_level/token budgets/max_turns。
 
-用户 skill 在 `~/.coding-agent/skills/`，项目 skill 在根 `skills/`。
+用户 skill 在 `~/.xiaoqiao/skills/`，项目 skill 在根 `skills/`。
+
+> 旧目录 `~/.coding-agent/` 仍被兼容读取：新目录不存在、旧目录存在时沿用旧目录（见 `python/src/xiaoqiao/paths.py`）。
 
 ## 打包与发布
 
-web 前端构建产物会随 Python wheel 一起分发，用户安装后即可通过 `coding-agent --web` 直接运行。
+web 前端构建产物会随 Python wheel 一起分发，用户安装后即可通过 `xiaoqiao --web` 直接运行（`coding-agent` 保留为兼容别名）。
 
 ```powershell
 # 一键构建 whl（含 web/dist）
 .\scripts\build-package.ps1
 
 # 本地测试安装
-uv tool install --reinstall python/dist/coding_agent-*.whl
-coding-agent --web
+uv tool install --reinstall python/dist/xiaoqiao-*.whl
+xiaoqiao --web
 
 # 构建并发布到 PyPI（需配置 UV_PUBLISH_TOKEN 或 PyPI 凭证）
 .\scripts\build-package.ps1 -Publish
 ```
 
-- 包名与入口脚本在 `python/pyproject.toml` 中定义。
-- 运行时会优先使用 wheel 内嵌的 `coding_agent/web_dist` 资源，开发环境回退到 `web/dist`。
+- 发行名与入口脚本在 `python/pyproject.toml` 中定义（`xiaoqiao` + 兼容别名 `coding-agent`）。
+- 运行时会优先使用 wheel 内嵌的 `xiaoqiao/web_dist` 资源，开发环境回退到 `web/dist`。
 
 ## 无 CI / 无 pre-commit
 

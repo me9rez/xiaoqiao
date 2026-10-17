@@ -77,7 +77,7 @@ function formatTime(timestamp?: number) {
 
       <div v-else-if="message.loading && !message.content.trim() && !message.thinking" class="space-y-2">
         <div class="flex items-center gap-2 text-xs text-[var(--text-subtle)]">
-          <span class="font-medium text-[var(--text)]">Coding Agent</span>
+          <span class="font-medium text-[var(--text)]">小巧</span>
           <span>·</span>
           <span>助手</span>
         </div>
@@ -92,7 +92,7 @@ function formatTime(timestamp?: number) {
 
       <div v-else-if="message.thinking || message.content.trim()" class="space-y-2">
         <div class="flex items-center gap-2 text-xs text-[var(--text-subtle)]">
-          <span class="font-medium text-[var(--text)]">Coding Agent</span>
+          <span class="font-medium text-[var(--text)]">小巧</span>
           <span>·</span>
           <span>助手</span>
         </div>

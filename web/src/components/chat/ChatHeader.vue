@@ -28,7 +28,7 @@ onUnmounted(() => {
 
 const currentTitle = computed(() => {
   const id = route.params.sessionId
-  if (typeof id !== 'string' || id.length === 0) return 'Coding Agent'
+  if (typeof id !== 'string' || id.length === 0) return '小巧'
   const session = sessionsStore.sessions.find((s) => s.id === id)
   return session?.title || '未命名会话'
 })

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from coding_agent.mcp import create_mcp_tools
-from coding_agent.settings import Settings
+from xiaoqiao.mcp import create_mcp_tools
+from xiaoqiao.settings import Settings
 
 
 class TestCreateMcpTools:

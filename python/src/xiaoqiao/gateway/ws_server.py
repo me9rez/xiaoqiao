@@ -1,7 +1,7 @@
 """WebSocket gateway server — replaces stdin/stdout transport.
 
 Usage:
-    python -m coding_agent.main --ws-port 8765
+    python -m xiaoqiao.main --ws-port 8765
 """
 
 from __future__ import annotations
@@ -15,8 +15,8 @@ from typing import Any
 
 from websockets.asyncio.server import ServerConnection, serve
 
-from coding_agent.agent_runtime import AgentRuntime, PendingApproval
-from coding_agent.events import (
+from xiaoqiao.agent_runtime import AgentRuntime, PendingApproval
+from xiaoqiao.events import (
     AgentEvent,
     DoneEvent,
     ErrorEvent,
@@ -31,14 +31,14 @@ from coding_agent.events import (
     TurnEndEvent,
     UsageEvent,
 )
-from coding_agent.mcp import (
+from xiaoqiao.mcp import (
     get_connector,
     install_connector,
     list_connectors,
     uninstall_connector,
     update_connector_config,
 )
-from coding_agent.session import (
+from xiaoqiao.session import (
     create_session,
     delete_session,
     end_session_run,
@@ -48,10 +48,10 @@ from coding_agent.session import (
     start_session_run,
     update_session,
 )
-from coding_agent.settings import Settings, _split_selected_model, build_client, thinking_level
-from coding_agent.settings import load as load_settings
-from coding_agent.settings import save as save_settings
-from coding_agent.skills import (
+from xiaoqiao.settings import Settings, _split_selected_model, build_client, thinking_level
+from xiaoqiao.settings import load as load_settings
+from xiaoqiao.settings import save as save_settings
+from xiaoqiao.skills import (
     get_skill,
     get_skill_file_content,
     get_skill_files,
@@ -61,8 +61,8 @@ from coding_agent.skills import (
     uninstall_skill,
     update_skill,
 )
-from coding_agent.thinking import thinking_options_for_model
-from coding_agent.turn_runner import TurnRunner
+from xiaoqiao.thinking import thinking_options_for_model
+from xiaoqiao.turn_runner import TurnRunner
 
 logger = logging.getLogger(__name__)
 
@@ -241,7 +241,7 @@ class WsGatewayServer:
         return self._clients[model]
 
     def _detect_workspace(self) -> dict[str, str]:
-        from coding_agent.system_prompt import discover_project_context
+        from xiaoqiao.system_prompt import discover_project_context
 
         ctx = discover_project_context()
         path = ctx.cwd or str(Path.cwd().resolve())
@@ -535,7 +535,7 @@ class WsGatewayServer:
                 # --- Automation: Scheduled Tasks ---
                 elif method == "listScheduledTasks":
                     try:
-                        from coding_agent.automation import list_scheduled_tasks, task_to_dict
+                        from xiaoqiao.automation import list_scheduled_tasks, task_to_dict
 
                         tasks = list_scheduled_tasks()
                         self._send_rpc_response(request_id, [task_to_dict(t) for t in tasks])
@@ -544,7 +544,7 @@ class WsGatewayServer:
                         self._send_rpc_error(request_id, str(exc))
                 elif method == "createScheduledTask":
                     try:
-                        from coding_agent.automation import create_scheduled_task, task_to_dict
+                        from xiaoqiao.automation import create_scheduled_task, task_to_dict
 
                         task = create_scheduled_task(params)
                         self._send_rpc_response(request_id, task_to_dict(task))
@@ -553,7 +553,7 @@ class WsGatewayServer:
                         self._send_rpc_error(request_id, str(exc))
                 elif method == "updateScheduledTask":
                     try:
-                        from coding_agent.automation import task_to_dict, update_scheduled_task
+                        from xiaoqiao.automation import task_to_dict, update_scheduled_task
 
                         task_id = params.get("id", "")
                         task = update_scheduled_task(task_id, params)
@@ -566,7 +566,7 @@ class WsGatewayServer:
                         self._send_rpc_error(request_id, str(exc))
                 elif method == "deleteScheduledTask":
                     try:
-                        from coding_agent.automation import delete_scheduled_task
+                        from xiaoqiao.automation import delete_scheduled_task
 
                         task_id = params.get("id", "")
                         ok = delete_scheduled_task(task_id)
@@ -576,7 +576,7 @@ class WsGatewayServer:
                         self._send_rpc_error(request_id, str(exc))
                 elif method == "toggleScheduledTask":
                     try:
-                        from coding_agent.automation import task_to_dict, toggle_scheduled_task
+                        from xiaoqiao.automation import task_to_dict, toggle_scheduled_task
 
                         task_id = params.get("id", "")
                         enabled = params.get("enabled", True)
@@ -591,7 +591,7 @@ class WsGatewayServer:
                 # --- Automation: Event Listeners ---
                 elif method == "listEventListeners":
                     try:
-                        from coding_agent.automation import list_event_listeners, listener_to_dict
+                        from xiaoqiao.automation import list_event_listeners, listener_to_dict
 
                         listeners = list_event_listeners()
                         self._send_rpc_response(request_id, [listener_to_dict(listener) for listener in listeners])
@@ -600,7 +600,7 @@ class WsGatewayServer:
                         self._send_rpc_error(request_id, str(exc))
                 elif method == "createEventListener":
                     try:
-                        from coding_agent.automation import create_event_listener, listener_to_dict
+                        from xiaoqiao.automation import create_event_listener, listener_to_dict
 
                         listener = create_event_listener(params)
                         self._send_rpc_response(request_id, listener_to_dict(listener))
@@ -609,7 +609,7 @@ class WsGatewayServer:
                         self._send_rpc_error(request_id, str(exc))
                 elif method == "updateEventListener":
                     try:
-                        from coding_agent.automation import listener_to_dict, update_event_listener
+                        from xiaoqiao.automation import listener_to_dict, update_event_listener
 
                         listener_id = params.get("id", "")
                         listener = update_event_listener(listener_id, params)
@@ -622,7 +622,7 @@ class WsGatewayServer:
                         self._send_rpc_error(request_id, str(exc))
                 elif method == "deleteEventListener":
                     try:
-                        from coding_agent.automation import delete_event_listener
+                        from xiaoqiao.automation import delete_event_listener
 
                         listener_id = params.get("id", "")
                         ok = delete_event_listener(listener_id)
@@ -632,7 +632,7 @@ class WsGatewayServer:
                         self._send_rpc_error(request_id, str(exc))
                 elif method == "toggleEventListener":
                     try:
-                        from coding_agent.automation import listener_to_dict, toggle_event_listener
+                        from xiaoqiao.automation import listener_to_dict, toggle_event_listener
 
                         listener_id = params.get("id", "")
                         enabled = params.get("enabled", True)
@@ -650,8 +650,8 @@ class WsGatewayServer:
                 self._ws = None
 
     async def _handle_prompt(self, text: str, session_id: str = "") -> None:
-        from coding_agent.mcp import format_mcp_tools_for_prompt
-        from coding_agent.system_prompt import (
+        from xiaoqiao.mcp import format_mcp_tools_for_prompt
+        from xiaoqiao.system_prompt import (
             BuildSystemPromptOptions,
             build_system_prompt,
             discover_project_context,
@@ -751,7 +751,7 @@ class WsGatewayServer:
         settings: Settings | None,
         approval_enabled: bool,
     ) -> AgentRuntime:
-        """Build (or reuse) the runtime for a coding-agent session.
+        """Build (or reuse) the runtime for a xiaoqiao session.
 
         The framework session holds the conversation, so the runtime must stay
         stable across turns — including across an approval pause/resume.
@@ -806,7 +806,7 @@ class WsGatewayServer:
             save_session(session)
 
     async def run_forever(self) -> None:
-        from coding_agent.system_prompt import discover_project_context
+        from xiaoqiao.system_prompt import discover_project_context
 
         ctx = discover_project_context()
         logger.info("WS gateway starting — OS: %s, shell: %s", ctx.os_name, ctx.shell)

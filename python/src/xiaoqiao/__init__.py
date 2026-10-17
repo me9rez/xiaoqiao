@@ -1,6 +1,6 @@
-"""Coding Agent — harness-based agent runtime + gateway for the web UI."""
+"""小巧 (Xiaoqiao) — harness-based agent runtime + gateway for the web UI."""
 
-from coding_agent.events import (
+from xiaoqiao.events import (
     AgentEvent,
     DoneEvent,
     ErrorEvent,

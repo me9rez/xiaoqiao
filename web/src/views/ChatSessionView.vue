@@ -84,7 +84,7 @@ function handleStop() {
     <div v-else class="flex-1 flex items-center justify-center text-sm text-[var(--text-muted)] select-none">
       <div class="text-center px-6 py-10">
         <div class="text-base text-[var(--text-primary)] mb-1">开始新的对话</div>
-        <div class="text-xs text-[var(--text-muted)]">向 Coding Agent 提问即可在此处查看回复</div>
+        <div class="text-xs text-[var(--text-muted)]">向小巧提问即可在此处查看回复</div>
       </div>
     </div>
     <div class="px-4 pb-2">

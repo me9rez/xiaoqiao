@@ -1,10 +1,10 @@
-# Coding Agent
+# 小巧 (Xiaoqiao)
 
 A lightweight, self-hosted coding assistant that runs in your terminal **and** your browser. Tell it what you want, and it will read files, run shell commands, edit code, search your project, and explain every step in real time.
 
 ![Empty state](docs/assets/screenshots/empty-state.png)
 
-## Why Coding Agent?
+## Why 小巧?
 
 - **🔧 Real tools, real actions** — it can run `bash`, read/write/edit files, search code, and load project-specific skills.
 - **⚡ Streaming, explainable output** — see the model's reasoning, tool calls, and live command output as they happen.
@@ -19,14 +19,14 @@ A lightweight, self-hosted coding assistant that runs in your terminal **and** y
 ### Install
 
 ```bash
-uv tool install coding-agent
+uv tool install xiaoqiao
 ```
 
 > Requires Python 3.14+. If you don't have `uv`, install it from [astral.sh/uv](https://astral.sh/uv).
 
 ### Configure
 
-Create `~/.coding-agent/settings.json`:
+Create `~/.xiaoqiao/settings.json`:
 
 ```json
 {
@@ -52,7 +52,7 @@ Create `~/.coding-agent/settings.json`:
 ### Run
 
 ```bash
-coding-agent --web
+xiaoqiao --web
 ```
 
 Open [http://127.0.0.1:8766](http://127.0.0.1:8766) and start typing.
@@ -75,6 +75,9 @@ Want to hack on it? See [docs/development.md](docs/development.md) for the archi
 
 ## Documentation
 
+- [Product direction](docs/product.md) — from coding assistant to self-hosted personal agent
+- [Pivot plan](docs/pivot-plan.md) — multi-bot runtime, data model, migration
+- [Design spec](docs/design.md) — tokens, components, motion, accessibility
 - [Development guide](docs/development.md)
 - [Gateway protocol](docs/protocol.md)
 - [Original proposal](docs/proposal.md)

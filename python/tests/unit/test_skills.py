@@ -8,7 +8,7 @@ from typing import Any, cast
 
 import pytest
 
-from coding_agent.skills import create_skills_provider
+from xiaoqiao.skills import create_skills_provider
 
 
 class TestCreateSkillsProvider:

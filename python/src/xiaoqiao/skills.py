@@ -12,6 +12,8 @@ import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from xiaoqiao.paths import config_dir
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
@@ -22,14 +24,14 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_SKILL_DIRS: Sequence[str | Path] = [
     Path.cwd() / "skills",
-    Path.home() / ".coding-agent" / "skills",
+    config_dir() / "skills",
     Path.home() / ".agents" / "skills",
 ]
 
 # Skill source classification
 _BUILTIN_DIRS: set[Path] = {
     Path.cwd() / "skills",
-    Path.home() / ".coding-agent" / "skills",
+    config_dir() / "skills",
 }
 _MINE_DIR: Path = Path.home() / ".agents" / "skills"
 
@@ -65,7 +67,7 @@ def create_skills_provider(
     ----------
     skill_dirs:
         Directories to scan for ``SKILL.md`` files. Defaults to the project-level
-        ``./skills`` directory and the user-level ``~/.coding-agent/skills``.
+        ``./skills`` directory and the user-level ``~/.xiaoqiao/skills``.
 
     Returns
     -------

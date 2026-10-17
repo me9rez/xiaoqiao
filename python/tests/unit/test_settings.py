@@ -6,7 +6,7 @@ from typing import cast
 
 import pytest
 
-from coding_agent.settings import Settings, _FakeClient, build_client
+from xiaoqiao.settings import Settings, _FakeClient, build_client
 
 
 class TestBuildClient:

@@ -36,7 +36,7 @@ from agent_framework import (
     create_harness_agent,
 )
 
-from coding_agent.events import (
+from xiaoqiao.events import (
     AgentEvent,
     DoneEvent,
     TextDeltaEvent,
@@ -47,7 +47,7 @@ from coding_agent.events import (
 )
 
 if TYPE_CHECKING:
-    from coding_agent.settings import Settings
+    from xiaoqiao.settings import Settings
 
 logger = logging.getLogger(__name__)
 
@@ -234,7 +234,7 @@ def _synthesize_text(messages: list[Message]) -> str:
 
 
 class AgentRuntime:
-    """Owns one harness agent plus its framework session for a coding-agent session."""
+    """Owns one harness agent plus its framework session for a xiaoqiao session."""
 
     def __init__(
         self,
@@ -261,7 +261,7 @@ class AgentRuntime:
         max_context: int | None = None
         max_output: int | None = None
         if settings is not None:
-            from coding_agent.settings import model_config
+            from xiaoqiao.settings import model_config
 
             cfg = model_config(settings, getattr(session, "model", None) or None)
             if cfg:
@@ -279,14 +279,14 @@ class AgentRuntime:
         # Tool lifecycle events (tool_call_start / tool_execution_start / _end) are
         # not visible in the response stream, so keep our FunctionMiddleware for them.
         # The harness merges this into its own chain rather than replacing it.
-        from coding_agent.tool_events import ToolEventMiddleware
+        from xiaoqiao.tool_events import ToolEventMiddleware
 
         self._tool_middleware = ToolEventMiddleware(on_event)
 
         kwargs: dict[str, Any] = {
             "client": client,
-            "name": "CodingAgent",
-            "description": "Coding agent harness runtime.",
+            "name": "Xiaoqiao",
+            "description": "Xiaoqiao harness runtime.",
             "agent_instructions": instructions,
             "tools": tool_list,
             "skills_provider": skill_provider,
@@ -324,7 +324,7 @@ class AgentRuntime:
     def _run_options(self) -> dict[str, Any]:
         options: dict[str, Any] = {}
         if self._thinking_level:
-            from coding_agent.thinking import thinking_options_for_level
+            from xiaoqiao.thinking import thinking_options_for_level
 
             options.update(thinking_options_for_level(self._thinking_level))
         return options

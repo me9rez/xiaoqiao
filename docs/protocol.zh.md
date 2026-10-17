@@ -1,6 +1,6 @@
 # Gateway JSON-RPC 协议
 
-coding agent 网关通过两种传输层暴露同一套 JSON-RPC 消息协议：
+小巧网关通过两种传输层暴露同一套 JSON-RPC 消息协议：
 
 - **WebSocket**（`--ws-port`，Web 界面使用）：每条消息为一个 JSON frame。
 - **stdio**（遗留 TUI）：通过 `stdin`/`stdout` 传输 newline-delimited JSON。
@@ -32,7 +32,7 @@ TUI ←─stdout── {"type":"done"}
 或
 
 ```json
-{"type":"ready","workspace":{"name":"coding-agent","path":"/home/user/coding-agent"}}
+{"type":"ready","workspace":{"name":"xiaoqiao","path":"/home/user/xiaoqiao"}}
 ```
 
 表示网关已就绪，可以接受请求。

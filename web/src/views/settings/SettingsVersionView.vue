@@ -22,10 +22,10 @@ async function checkUpdate() {
         🤖
       </div>
       <h1 class="text-2xl font-semibold">
-        Coding Agent
+        小巧
       </h1>
       <p class="text-sm text-[var(--text-muted)] mt-1">
-        交给 Coding Agent 就行啦
+        交给小巧就行啦
       </p>
     </div>
 
@@ -53,8 +53,8 @@ async function checkUpdate() {
     </div>
 
     <div class="text-center text-xs text-[var(--text-subtle)] mt-12 space-y-1">
-      <p>Made with ❤ by Coding Agent Team</p>
-      <p>© {{ new Date().getFullYear() }} Coding Agent. All rights reserved. · 免责声明</p>
+      <p>Made with ❤ by 小巧 Team</p>
+      <p>© {{ new Date().getFullYear() }} 小巧. All rights reserved. · 免责声明</p>
     </div>
   </div>
 </template>

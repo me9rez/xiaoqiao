@@ -1,4 +1,4 @@
-"""Bridge coding-agent sessions to agent-framework AgentSession objects.
+"""Bridge xiaoqiao sessions to agent-framework AgentSession objects.
 
 This module creates, persists, and restores the framework-side session used by
 ToolApprovalMiddleware and workflow checkpointing.
@@ -13,7 +13,7 @@ from typing import Any
 
 from agent_framework import AgentSession
 
-from coding_agent.session import _session_dir
+from xiaoqiao.session import _session_dir
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ def _framework_session_path(session_id: str) -> Path:
 
 
 def create_framework_session(session_id: str) -> AgentSession:
-    """Create a fresh framework session bound to a coding-agent session id."""
+    """Create a fresh framework session bound to a xiaoqiao session id."""
     return AgentSession(session_id=session_id)
 
 
@@ -54,7 +54,7 @@ def get_or_create_framework_session(session_id: str) -> AgentSession:
 
 
 def delete_framework_session(session_id: str) -> None:
-    """Remove the persisted framework session for a coding-agent session."""
+    """Remove the persisted framework session for a xiaoqiao session."""
     path = _framework_session_path(session_id)
     if path.exists():
         path.unlink()

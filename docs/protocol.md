@@ -1,6 +1,6 @@
 # Gateway JSON-RPC Protocol
 
-The coding agent gateway exposes the same JSON-RPC message protocol over two transports:
+The 小巧 gateway exposes the same JSON-RPC message protocol over two transports:
 
 - **WebSocket** (`--ws-port`, used by the web UI): each message is a single JSON frame.
 - **stdio** (legacy TUI): newline-delimited JSON over `stdin`/`stdout`.
@@ -32,7 +32,7 @@ On startup, the gateway emits a `ready` event. The WebSocket gateway also report
 or
 
 ```json
-{"type":"ready","workspace":{"name":"coding-agent","path":"/home/user/coding-agent"}}
+{"type":"ready","workspace":{"name":"xiaoqiao","path":"/home/user/xiaoqiao"}}
 ```
 
 This signals the client that the gateway is initialized and ready to accept requests.

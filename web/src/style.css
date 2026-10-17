@@ -1,15 +1,4 @@
-:root {
-  --bg-page: #faf9f7;
-  --bg-card: #ffffff;
-  --bg-muted: #f3f2f0;
-  --border: #e8e7e5;
-  --text: #1f1f1f;
-  --text-muted: #6b6b6b;
-  --text-subtle: #9a9a9a;
-  --accent: #1f1f1f;
-  --radius: 1rem;
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-}
+/* App-level base styles. Design values live in src/styles/tokens.css. */
 
 html,
 body,
@@ -20,27 +9,57 @@ body,
 }
 
 body {
-  font-family: 'LXGW WenKai GB', 'PingFang SC', 'Microsoft YaHei', sans-serif;
-  background-color: var(--bg-page);
-  color: var(--text);
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-ui);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  transition:
+    background-color var(--duration-base) var(--ease-out),
+    color var(--duration-base) var(--ease-out);
 }
 
 * {
   box-sizing: border-box;
 }
 
+.mono {
+  font-family: var(--font-mono);
+}
+
+::selection {
+  background: var(--p-selection);
+}
+
+/* Global keyboard-focus fallback. Components may opt into the softer ring
+ * tokens (--p-focus-ring) when they need to compose with shadows. */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
 /* Markdown prose tweaks */
 .prose pre {
-  background-color: var(--bg-muted);
-  border-radius: calc(var(--radius) / 2);
+  background-color: var(--color-surface);
+  border-radius: var(--radius-xl);
+  font-family: var(--font-mono);
 }
 
 .prose code {
-  background-color: var(--bg-muted);
+  background-color: var(--color-selected);
   padding: 0.15rem 0.35rem;
-  border-radius: 0.35rem;
+  border-radius: var(--radius-xs);
+  font-family: var(--font-mono);
   font-size: 0.875em;
+}
+
+.prose a {
+  color: var(--color-link);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .prose p {
@@ -50,9 +69,25 @@ body {
 .prose ul,
 .prose ol {
   margin: 0.5em 0;
-  padding-left: 1.25em;
+  padding-left: 1.5em;
 }
 
 .prose li {
-  margin: 0.25em 0;
+  margin: 0.5em 0;
+}
+
+.prose blockquote {
+  border-left: 2px solid var(--color-line);
+  padding-left: 1.5em;
+  color: var(--color-text-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

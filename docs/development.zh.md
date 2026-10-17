@@ -3,7 +3,7 @@
 ## 仓库结构
 
 ```
-coding-agent/
+xiaoqiao/
 ├── python/          # Agent 核心：自定义 loop、工具、WebSocket 网关
 ├── web/             # 浏览器界面：Vite + Vue 3 + UnoCSS + Pinia
 ├── tui/             # 遗留终端界面（供参考）
@@ -45,8 +45,8 @@ coding-agent/
 
 - **自定义 agent loop**（`loop.py`）：逐 chunk 发射 `thinking_delta`、`text_delta`、工具生命周期和轮次边界事件。
 - **WebSocket 网关**（`gateway/ws_server.py`）：将 Python 后端与 Web 前端解耦；同样的协议也支持 stdio，供遗留 TUI 使用。
-- **会话持久化**（`session.py`）：所有对话以 JSONL 形式保存在 `~/.coding-agent/sessions/`。
-- **前端资源打包**：wheel 将 `web/dist` 放入 `coding_agent/web_dist`，最终用户只需安装 Python 包。
+- **会话持久化**（`session.py`）：所有对话以 JSONL 形式保存在 `~/.xiaoqiao/sessions/`（旧目录 `~/.xiaoqiao/` 仍兼容读取）。
+- **前端资源打包**：wheel 将 `web/dist` 放入 `xiaoqiao/web_dist`，最终用户只需安装 Python 包。
 
 ## Python 层
 
@@ -70,21 +70,21 @@ uv run pyright src/
 
 ```bash
 # Web 模式：静态资源服务 + WebSocket 网关（使用已构建的 web/dist）
-uv run python -m coding_agent.main --web
+uv run python -m xiaoqiao.main --web
 
 # 仅启动 WebSocket 网关，供 web 开发使用
-uv run python -m coding_agent.main --ws-port 8765
+uv run python -m xiaoqiao.main --ws-port 8765
 
 # CLI 测试模式，使用 fake client（无需 API key）
-uv run python -m coding_agent.main --test "列出 Python 文件"
+uv run python -m xiaoqiao.main --test "列出 Python 文件"
 
 # stdio gateway 模式（遗留 TUI）
-uv run python -m coding_agent.main
+uv run python -m xiaoqiao.main
 ```
 
 ### 添加新工具
 
-1. 在 `python/src/coding_agent/tools/coding_tools.py` 中新增 `async def`。
+1. 在 `python/src/xiaoqiao/tools/coding_tools.py` 中新增 `async def`。
 2. 在 `create_coding_tools()` 中注册为 `FunctionTool`。
 3. 参数名和 docstring 会自动转换为 JSON schema。
 
@@ -111,7 +111,7 @@ pnpm install
 ```bash
 # 终端 1：启动 WebSocket 网关
 cd python
-uv run python -m coding_agent.main --ws-port 8765
+uv run python -m xiaoqiao.main --ws-port 8765
 
 # 终端 2：启动 Vite 开发服务器
 cd web
@@ -138,13 +138,13 @@ PowerShell 助手脚本会自动构建前端并生成 wheel：
 .\scripts\build-package.ps1
 
 # 本地测试安装
-uv tool install --reinstall python/dist/coding_agent-*.whl
+uv tool install --reinstall python/dist/xiaoqiao-*.whl
 
 # 发布到 PyPI（需配置 UV_PUBLISH_TOKEN 或 PyPI 凭证）
 .\scripts\build-package.ps1 -Publish
 ```
 
-包元数据见 `python/pyproject.toml`，运行时资源定位逻辑见 `python/src/coding_agent/main.py:_default_web_root()`。
+包元数据见 `python/pyproject.toml`，运行时资源定位逻辑见 `python/src/xiaoqiao/main.py:_default_web_root()`。
 
 ## 测试
 
@@ -160,15 +160,15 @@ Python 测试目前以临时方式运行：
 ```bash
 cd python
 # fake client 流程验证（无需 API key）
-uv run python -m coding_agent.main --test "hello"
+uv run python -m xiaoqiao.main --test "hello"
 
 # 真实 LLM 验证（需 API key）
-uv run python -m coding_agent.main --test "执行 echo hello"
+uv run python -m xiaoqiao.main --test "执行 echo hello"
 ```
 
 ## 常见问题
 
-### "No module named 'coding_agent'"
+### "No module named 'xiaoqiao'"
 
 从 `python/` 目录运行，或将 `python/src` 加入 `PYTHONPATH`。
 

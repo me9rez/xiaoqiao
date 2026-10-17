@@ -1,4 +1,4 @@
-"""Settings management — reads/writes ~/.coding-agent/settings.json.
+"""Settings management — reads/writes ~/.xiaoqiao/settings.json.
 
 Configuration now follows a provider/model layout similar to openclaw.json:
 
@@ -35,12 +35,13 @@ import json
 import logging
 import os
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, ClassVar
+
+from xiaoqiao.paths import config_dir
 
 logger = logging.getLogger(__name__)
 
-_SETTINGS_DIR = Path.home() / ".coding-agent"
+_SETTINGS_DIR = config_dir()
 _SETTINGS_PATH = _SETTINGS_DIR / "settings.json"
 
 
@@ -113,7 +114,7 @@ def _split_selected_model(value: str) -> tuple[str, str]:
 
 
 def load() -> Settings:
-    """Load settings from ~/.coding-agent/settings.json."""
+    """Load settings from ~/.xiaoqiao/settings.json."""
     if not _SETTINGS_PATH.exists():
         return _default_settings()
     try:
@@ -193,7 +194,7 @@ def load() -> Settings:
 
 
 def save(s: Settings) -> None:
-    """Save settings to ~/.coding-agent/settings.json."""
+    """Save settings to ~/.xiaoqiao/settings.json."""
     _SETTINGS_DIR.mkdir(parents=True, exist_ok=True)
     data = {
         "primaryModel": s.primary_model,

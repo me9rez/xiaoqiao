@@ -3,7 +3,7 @@
 ## Repository layout
 
 ```
-coding-agent/
+xiaoqiao/
 ├── python/          # Agent core: custom loop, tools, WebSocket gateway
 ├── web/             # Browser UI: Vite + Vue 3 + UnoCSS + Pinia
 ├── tui/             # Legacy terminal UI (kept for reference)
@@ -45,8 +45,8 @@ Key design choices:
 
 - **Custom agent loop** (`loop.py`) instead of a prefab harness, so we can emit fine-grained events: `thinking_delta`, `text_delta`, tool lifecycle, and turn boundaries.
 - **WebSocket gateway** (`gateway/ws_server.py`) decouples the Python backend from the web frontend. The same event protocol is also available over stdio for the legacy TUI.
-- **Session persistence** (`session.py`) stores every conversation as JSONL in `~/.coding-agent/sessions/`.
-- **Bundled frontend** — the wheel ships `web/dist` under `coding_agent/web_dist` so end users only need to install the Python package.
+- **Session persistence** (`session.py`) stores every conversation as JSONL in `~/.xiaoqiao/sessions/` (legacy `~/.xiaoqiao/` still read).
+- **Bundled frontend** — the wheel ships `web/dist` under `xiaoqiao/web_dist` so end users only need to install the Python package.
 
 ## Python layer
 
@@ -70,21 +70,21 @@ uv run pyright src/
 
 ```bash
 # Web mode: static server + WebSocket gateway (uses built web/dist)
-uv run python -m coding_agent.main --web
+uv run python -m xiaoqiao.main --web
 
 # WebSocket-only gateway for web dev
-uv run python -m coding_agent.main --ws-port 8765
+uv run python -m xiaoqiao.main --ws-port 8765
 
 # CLI test mode with the fake client (no API key required)
-uv run python -m coding_agent.main --test "List Python files"
+uv run python -m xiaoqiao.main --test "List Python files"
 
 # stdio gateway mode (legacy TUI)
-uv run python -m coding_agent.main
+uv run python -m xiaoqiao.main
 ```
 
 ### Adding a tool
 
-1. Add an `async def` in `python/src/coding_agent/tools/coding_tools.py`.
+1. Add an `async def` in `python/src/xiaoqiao/tools/coding_tools.py`.
 2. Register it in `create_coding_tools()` as a `FunctionTool`.
 3. Parameter names and the docstring become the JSON schema automatically.
 
@@ -111,7 +111,7 @@ pnpm install
 ```bash
 # Terminal 1: start the WebSocket gateway
 cd python
-uv run python -m coding_agent.main --ws-port 8765
+uv run python -m xiaoqiao.main --ws-port 8765
 
 # Terminal 2: start the Vite dev server
 cd web
@@ -138,13 +138,13 @@ The PowerShell helper bundles the frontend and builds a wheel:
 .\scripts\build-package.ps1
 
 # Local test install
-uv tool install --reinstall python/dist/coding_agent-*.whl
+uv tool install --reinstall python/dist/xiaoqiao-*.whl
 
 # Publish to PyPI (requires UV_PUBLISH_TOKEN or PyPI credentials)
 .\scripts\build-package.ps1 -Publish
 ```
 
-See `python/pyproject.toml` for package metadata and `python/src/coding_agent/main.py:_default_web_root()` for how the bundled `web_dist` is located at runtime.
+See `python/pyproject.toml` for package metadata and `python/src/xiaoqiao/main.py:_default_web_root()` for how the bundled `web_dist` is located at runtime.
 
 ## Testing
 
@@ -160,15 +160,15 @@ Python tests are run ad-hoc:
 ```bash
 cd python
 # Fake client pipeline test
-uv run python -m coding_agent.main --test "hello"
+uv run python -m xiaoqiao.main --test "hello"
 
 # Real LLM test (requires API key)
-uv run python -m coding_agent.main --test "Run echo hello"
+uv run python -m xiaoqiao.main --test "Run echo hello"
 ```
 
 ## Common issues
 
-### "No module named 'coding_agent'"
+### "No module named 'xiaoqiao'"
 
 Run from the `python/` directory, or ensure `python/src` is on `PYTHONPATH`.
 

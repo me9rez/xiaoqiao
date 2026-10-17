@@ -23,5 +23,5 @@
 - 运行 `cd python && ruff check src/` 确认 lint 通过
 
 ## 关键文件
-- `python/src/coding_agent/system_prompt.py`
-- `python/src/coding_agent/workflow_loop.py`
+- `python/src/xiaoqiao/system_prompt.py`
+- `python/src/xiaoqiao/workflow_loop.py`

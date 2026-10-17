@@ -1,4 +1,4 @@
-# Coding Agent — 技术方案
+# 小巧（Xiaoqiao）— 技术方案
 
 ## 1. 架构总览
 
@@ -10,7 +10,7 @@
 │  ├─ Message / Content        统一消息模型                      │
 │  └─ ContextWindowCompactionStrategy  上下文压缩               │
 ├──────────────────────────────────────────────────────────────┤
-│ Python: coding_agent（自定义 loop + gateway）                 │
+│ Python: xiaoqiao（自定义 loop + gateway）                 │
 │  ├─ loop.py                  自定义 agent loop                │
 │  │   └─ BaseChatClient.get_response(stream=True)              │
 │  │   └─ 每轮产出自定义细粒度事件流                             │
@@ -86,7 +86,7 @@ ChatResponseUpdate(text="结果出来了...")
 
 ```python
 # loop.py
-async def run_coding_agent(client, messages, tools, on_event):
+async def run_xiaoqiao(client, messages, tools, on_event):
     tools = normalize_tools(tools)
     tool_map = {t.name: t for t in tools}
     
@@ -182,7 +182,7 @@ WebSocket 网关还支持会话管理 RPC：
 ## 4. 目录结构
 
 ```
-coding-agent/
+xiaoqiao/
 ├── README.md                    # 项目说明
 ├── README.zh.md                 # 中文项目说明
 ├── docs/
@@ -196,7 +196,7 @@ coding-agent/
 │   ├── scripts/
 │   │   └── build-package.ps1    # 一键打包发布脚本
 │   └── src/
-│       └── coding_agent/
+│       └── xiaoqiao/
 │           ├── __init__.py
 │           ├── __main__.py
 │           ├── main.py          # 入口: gateway 模式 / --test CLI
@@ -271,7 +271,7 @@ class ErrorEvent:           message: str; recoverable: bool
 ### Python: `loop.py` 核心签名
 
 ```python
-async def run_coding_agent(
+async def run_xiaoqiao(
     client: BaseChatClient,
     messages: list[Message],
     tools: list[FunctionTool],

@@ -1,4 +1,4 @@
-"""Session persistence for the coding agent.
+"""Session persistence for 小巧.
 
 Saves conversation history as JSONL files (one JSON object per message line).
 A session index file tracks available sessions.
@@ -13,6 +13,8 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+from xiaoqiao.paths import config_dir
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +79,7 @@ class SessionData:
 # ── Session store ───────────────────────────────────────────────
 
 
-_SESSIONS_DIR = Path.home() / ".coding-agent" / "sessions"
+_SESSIONS_DIR = config_dir() / "sessions"
 _INDEX_FILE = "sessions.json"
 
 

@@ -1,0 +1,289 @@
+/**
+ * Design tokens — single source of truth.
+ *
+ * Spec: docs/design.md (adopted from Kimi Code Web).
+ * Rules:
+ *   - Components use var(--token); never hard-code colors.
+ *   - Dark mode only overrides semantic tokens (html[data-color-scheme="dark"]).
+ *   - Legacy aliases at the bottom exist for migration only. Do not use them
+ *     in new code.
+ */
+
+:root {
+  color-scheme: light;
+
+  /* ── Font scale ─────────────────────────────────────────────
+   * --ui-shift moves every UI size by -2 / 0 / +2 / +4px.
+   * See docs/design.md §4.2. */
+  --base-font: 14px;
+  --ui-shift: 0px;
+
+  /* ── Surfaces ───────────────────────────────────────────── */
+  --color-bg: #ffffff;
+  --color-surface: #f5f5f5;
+  --color-surface-raised: #ffffff;
+  --color-surface-overlay: #ffffff;
+  --color-surface-sunken: #f5f5f5;
+  --color-surface-deep: #f5f5f5;
+  --color-well: #f5f5f5;
+  --color-sidebar-bg: #f9fbfc;
+  --color-menu-bg: rgba(255, 255, 255, 0.95);
+
+  /* ── Text ───────────────────────────────────────────────── */
+  --color-text-strong: #000000;
+  --color-text: rgba(0, 0, 0, 0.95);
+  --color-text-muted: rgba(0, 0, 0, 0.68);
+  --color-text-faint: rgba(0, 0, 0, 0.53);
+  --color-text-quaternary: rgba(0, 0, 0, 0.3);
+
+  /* ── Lines & states ─────────────────────────────────────── */
+  --color-line: rgba(0, 0, 0, 0.13);
+  --color-line-strong: rgba(0, 0, 0, 0.15);
+  --color-hover: rgba(0, 0, 0, 0.03);
+  --color-selected: rgba(0, 0, 0, 0.05);
+  --color-selected-hover: rgba(0, 0, 0, 0.08);
+
+  /* ── Accent ─────────────────────────────────────────────── */
+  --color-accent: #1783ff;
+  --color-accent-hover: #167ff7;
+  --color-accent-soft: #e8f3ff;
+  --color-accent-bd: rgba(23, 131, 255, 0.25);
+  --color-link: #0f6ef2;
+
+  /* ── Status ─────────────────────────────────────────────── */
+  --color-success: #0e7a38;
+  --color-success-soft: #e7f6ee;
+  --color-success-bd: #bfe3cc;
+  --color-warning: #a9610a;
+  --color-warning-soft: #fbf1e0;
+  --color-warning-bd: #f0d9b8;
+  --color-orange: #bc4c00;
+  --color-orange-soft: #fff1e5;
+  --color-danger: #c0392b;
+  --color-danger-soft: #fbeaea;
+  --color-danger-bd: #f0cccc;
+  --color-done: #8250df;
+  --color-done-soft: #f3e8ff;
+  --color-done-bd: #e0ccff;
+  --color-info: var(--color-accent);
+  --color-attention: #ff9f0a;
+
+  /* ── Diff ───────────────────────────────────────────────── */
+  --color-diff-add-bg: rgba(22, 196, 86, 0.1);
+  --color-diff-del-bg: rgba(255, 77, 77, 0.1);
+  --color-diff-add-fg: #16c456;
+  --color-diff-del-fg: #ff4756;
+
+  /* ── Composer & send ────────────────────────────────────── */
+  --color-composer-bg: #ffffff;
+  --color-composer-line: rgba(0, 0, 0, 0.13);
+  --color-composer-focus-line: rgba(0, 0, 0, 0.25);
+  --color-send-bg: rgba(0, 0, 0, 0.9);
+  --color-send-bg-hover: #252525;
+  --color-send-icon: #ffffff;
+  --color-send-bg-disabled: rgba(0, 0, 0, 0.05);
+  --color-send-icon-disabled: rgba(0, 0, 0, 0.27);
+  --color-user-bubble-bg: #f5f5f5;
+
+  /* ── Spacing ────────────────────────────────────────────── */
+  --space-05: 2px;
+  --space-1: 4px;
+  --space-1-5: 6px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* ── Radius ─────────────────────────────────────────────── */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
+  --radius-composer: 32px;
+  --radius-full: 999px;
+  --radius-window: 14px;
+
+  /* ── Hairline & focus ───────────────────────────────────── */
+  --p-hairline: 0.5px;
+  --p-focus-ring-w: 3px;
+  --p-focus-ring: 0 0 0 3px var(--color-accent-soft);
+  --p-focus-ring-strong:
+    0 0 0 3px var(--color-accent-soft),
+    0 0 0 1px var(--color-accent);
+  --p-ring-stroke: 1.5px;
+  --p-selection: rgba(23, 131, 255, 0.2);
+
+  /* ── Shadows ────────────────────────────────────────────── */
+  --shadow-xs: 0 1px 2px rgba(16, 24, 40, 0.04);
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.05), 0 1px 3px rgba(16, 24, 40, 0.06);
+  --shadow-md: 0 4px 12px rgba(16, 24, 40, 0.07), 0 2px 4px rgba(16, 24, 40, 0.05);
+  --shadow-lg: 0 12px 32px rgba(16, 24, 40, 0.12), 0 4px 10px rgba(16, 24, 40, 0.08);
+  --shadow-xl: 0 24px 64px rgba(16, 24, 40, 0.18), 0 8px 20px rgba(16, 24, 40, 0.1);
+  --shadow-menu: 0 6px 18px rgba(0, 0, 0, 0.12), 0 3px 9px rgba(0, 0, 0, 0.08), 0 1px 1px rgba(0, 0, 0, 0.04);
+  --shadow-input: 0 5px 16px -4px rgba(0, 0, 0, 0.07);
+  --shadow-send: 0 7px 16px -13px rgba(0, 0, 0, 0.38), 0 1px 2px rgba(0, 0, 0, 0.07);
+
+  /* ── Typography ─────────────────────────────────────────── */
+  --font-ui-latin: "Schibsted Grotesk Variable", "Helvetica Neue", Arial;
+  --font-ui:
+    var(--font-ui-latin), "Noto Sans SC Variable", "Noto Sans SC",
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Source Han Sans SC",
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu, sans-serif,
+    "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  --font-display: var(--font-ui);
+  --font-mono:
+    "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "SF Mono",
+    Menlo, Consolas, "Liberation Mono", monospace;
+  --font-kbd: var(--font-ui-latin), system-ui, sans-serif;
+
+  --text-2xs: calc(11px + var(--ui-shift));
+  --text-xs: calc(12px + var(--ui-shift));
+  --text-sm: calc(13px + var(--ui-shift));
+  --text-base: calc(14px + var(--ui-shift));
+  --text-lg: calc(16px + var(--ui-shift));
+  --text-xl: min(calc(18px + var(--ui-shift)), 22px);
+  --text-2xl: min(calc(20px + var(--ui-shift)), 24px);
+
+  --leading-tight: 1.25;
+  --leading-normal: 1.5;
+  --leading-prose: 1.6;
+
+  --weight-regular: 400;
+  --weight-caption: 450;
+  --weight-option-label: 475;
+  --weight-medium: 500;
+  --weight-ui-strong: 525;
+  --weight-section-label: 600;
+  --weight-semibold: 700;
+
+  /* ── Motion ─────────────────────────────────────────────── */
+  --duration-fast: 0.12s;
+  --duration-base: 0.16s;
+  --duration-slow: 0.26s;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* ── Layout ─────────────────────────────────────────────── */
+  --p-sidebar-w: 264px;
+  --p-content-max: 760px;
+  --p-content-wide: 920px;
+  --p-bubble-max: 78%;
+  --touch-target-min: 44px;
+
+  /* ── z-index ────────────────────────────────────────────── */
+  --z-base: 0;
+  --z-raised: 1;
+  --z-sticky: 100;
+  --z-dropdown: 200;
+  --z-overlay: 300;
+  --z-modal: 400;
+  --z-modal-dropdown: 500;
+  --z-toast: 600;
+  --z-tooltip: 650;
+  --z-max: 9999;
+
+  /* ── Legacy aliases (migration only) ────────────────────── */
+  --bg-page: var(--color-bg);
+  --bg-card: var(--color-surface-raised);
+  --bg-muted: var(--color-surface);
+  --border: var(--color-line);
+  --text: var(--color-text);
+  --text-muted: var(--color-text-muted);
+  --text-subtle: var(--color-text-faint);
+  --accent: var(--color-text-strong);
+  --radius: var(--radius-lg);
+  --shadow: var(--shadow-xs);
+}
+
+/* ── Font scale ─────────────────────────────────────────────
+ * Only the shift changes; sizes derive from it via calc(). */
+html[data-font-scale="small"] {
+  --base-font: 12px;
+  --ui-shift: -2px;
+}
+
+html[data-font-scale="large"] {
+  --base-font: 16px;
+  --ui-shift: 2px;
+}
+
+html[data-font-scale="xlarge"] {
+  --base-font: 18px;
+  --ui-shift: 4px;
+}
+
+/* ── Dark theme ─────────────────────────────────────────────
+ * The boot script resolves "system" to light/dark and writes the
+ * result here, so this block stays the only dark override. */
+html[data-color-scheme="dark"] {
+  color-scheme: dark;
+
+  --color-bg: #121212;
+  --color-surface: #1f1f1f;
+  --color-surface-raised: #292929;
+  --color-surface-overlay: rgba(255, 255, 255, 0.1);
+  --color-surface-sunken: #121212;
+  --color-surface-deep: #0d0d0d;
+  --color-well: #1f1f1f;
+  --color-sidebar-bg: #0d0d0d;
+  --color-menu-bg: rgba(41, 41, 41, 0.95);
+
+  --color-text-strong: #ffffff;
+  --color-text: rgba(255, 255, 255, 0.9);
+  --color-text-muted: rgba(255, 255, 255, 0.64);
+  --color-text-faint: rgba(255, 255, 255, 0.5);
+  --color-text-quaternary: rgba(255, 255, 255, 0.26);
+
+  --color-line: rgba(255, 255, 255, 0.12);
+  --color-line-strong: rgba(255, 255, 255, 0.18);
+  --color-hover: rgba(255, 255, 255, 0.05);
+  --color-selected: rgba(255, 255, 255, 0.1);
+  --color-selected-hover: rgba(255, 255, 255, 0.14);
+
+  --color-accent: #1a88ff;
+  --color-accent-hover: #258eff;
+  --color-accent-soft: rgba(26, 136, 255, 0.1);
+  --color-accent-bd: rgba(26, 136, 255, 0.28);
+  --color-link: #3393ff;
+
+  --color-success: #3fb950;
+  --color-success-soft: rgba(63, 185, 80, 0.14);
+  --color-success-bd: rgba(63, 185, 80, 0.28);
+  --color-warning: #d29922;
+  --color-warning-soft: rgba(210, 153, 34, 0.14);
+  --color-warning-bd: rgba(210, 153, 34, 0.28);
+  --color-orange: #f0883e;
+  --color-orange-soft: rgba(240, 136, 62, 0.14);
+  --color-danger: #f85149;
+  --color-danger-soft: rgba(248, 81, 73, 0.14);
+  --color-danger-bd: rgba(248, 81, 73, 0.28);
+  --color-done: #a371f7;
+  --color-done-soft: rgba(163, 113, 247, 0.14);
+  --color-done-bd: rgba(163, 113, 247, 0.28);
+
+  --color-diff-add-bg: rgba(63, 185, 80, 0.14);
+  --color-diff-del-bg: rgba(248, 81, 73, 0.14);
+
+  --color-composer-bg: #1f1f1f;
+  --color-composer-line: rgba(255, 255, 255, 0.12);
+  --color-composer-focus-line: rgba(255, 255, 255, 0.25);
+  --color-send-bg: rgba(255, 255, 255, 0.84);
+  --color-send-bg-hover: rgba(255, 255, 255, 0.9);
+  --color-send-icon: #1f1f1f;
+  --color-send-bg-disabled: rgba(255, 255, 255, 0.1);
+  --color-send-icon-disabled: rgba(255, 255, 255, 0.28);
+  --color-user-bubble-bg: #292929;
+
+  --p-selection: rgba(26, 136, 255, 0.2);
+
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.22), 0 1px 3px rgba(0, 0, 0, 0.18);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.3), 0 2px 4px rgba(0, 0, 0, 0.24);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.34), 0 4px 10px rgba(0, 0, 0, 0.28);
+  --shadow-xl: 0 24px 64px rgba(0, 0, 0, 0.42), 0 8px 20px rgba(0, 0, 0, 0.32);
+  --shadow-menu: 0 6px 18px rgba(0, 0, 0, 0.2), 0 3px 9px rgba(0, 0, 0, 0.24), 0 1px 1px rgba(0, 0, 0, 0.24);
+}

@@ -1,10 +1,10 @@
-# Coding Agent
+# 小巧（Xiaoqiao）
 
 一个轻量、可自托管的编程助手，既能在终端运行，也能在浏览器中使用。告诉它你想做什么，它会读取文件、执行命令、修改代码、搜索项目，并实时展示每一步的思考过程。
 
 ![初始界面](docs/assets/screenshots/empty-state.png)
 
-## 为什么选择 Coding Agent？
+## 为什么选择小巧？
 
 - **🔧 真工具、真执行** — 支持 `bash`、文件读写/精确编辑、代码搜索，还能加载项目级 Skill。
 - **⚡ 流式、可解释** — 实时看到模型的思考链、工具调用和命令输出。
@@ -19,14 +19,14 @@
 ### 安装
 
 ```bash
-uv tool install coding-agent
+uv tool install xiaoqiao
 ```
 
 > 需要 Python 3.14+。如果还没有 `uv`，可从 [astral.sh/uv](https://astral.sh/uv) 安装。
 
 ### 配置
 
-创建 `~/.coding-agent/settings.json`：
+创建 `~/.xiaoqiao/settings.json`：
 
 ```json
 {
@@ -52,7 +52,7 @@ uv tool install coding-agent
 ### 运行
 
 ```bash
-coding-agent --web
+xiaoqiao --web
 ```
 
 打开 [http://127.0.0.1:8766](http://127.0.0.1:8766)，开始对话。
@@ -75,6 +75,9 @@ coding-agent --web
 
 ## 文档
 
+- [产品文档](docs/product.md) — 从编程助手到自托管个人 Agent
+- [改造方案](docs/pivot-plan.md) — 多 Bot 运行时、数据模型与迁移
+- [设计规范](docs/design.md) — token、组件、动效与可访问性
 - [开发指南](docs/development.zh.md)
 - [网关协议](docs/protocol.zh.md)
 - [原始方案](docs/proposal.md)

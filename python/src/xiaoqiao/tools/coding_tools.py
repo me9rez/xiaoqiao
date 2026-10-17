@@ -1,4 +1,4 @@
-"""Coding agent tools — file read/write/edit/search, shell commands, system utilities.
+"""小巧 tools — file read/write/edit/search, shell commands, system utilities.
 
 Each tool is a ``FunctionTool`` instance that can be passed to the agent loop.
 All tools are async and return strings.
@@ -24,6 +24,8 @@ if TYPE_CHECKING:
 
 from agent_framework._middleware import FunctionInvocationContext
 
+from xiaoqiao.paths import config_dir
+
 ApprovalMode = Literal["always_require", "never_require"]
 
 logger = logging.getLogger(__name__)
@@ -40,7 +42,7 @@ class _ToolResult:
 
 
 _MAX_OUTPUT_CHARS = 100_000
-_DATA_DIR = Path.home() / ".coding-agent"
+_DATA_DIR = config_dir()
 
 # Default tools that require approval
 _DEFAULT_ALWAYS_REQUIRE = {"run_command", "write_file", "edit_file", "http_fetch"}
@@ -494,7 +496,7 @@ async def _web_search(query: str, count: int = 8, market: str = "zh-CN") -> str:
         api_key = search_config.get("apiKey", "")
 
         if not api_key:
-            return "Error: No search API key configured. Please set webSearch.apiKey in ~/.coding-agent/settings.json"
+            return "Error: No search API key configured. Please set webSearch.apiKey in ~/.xiaoqiao/settings.json"
 
         if provider == "bing":
             return await _bing_search(query, api_key, count, market)
@@ -573,7 +575,7 @@ async def _system_notify(title: str, body: str) -> str:
                 "$x.LoadXml($t)"
                 "$n = [Windows.UI.Notifications.ToastNotification]::new($x)"
                 "[Windows.UI.Notifications.ToastNotificationManager]"
-                "::CreateToastNotifier('Coding Agent').Show($n)"
+                "::CreateToastNotifier('小巧').Show($n)"
             )
             proc = await asyncio.create_subprocess_exec(
                 "pwsh",
@@ -705,7 +707,7 @@ async def _todo_write(
     content: str | None = None,
     ctx: FunctionInvocationContext | None = None,
 ) -> str:
-    """Manage task plan items stored per session in ~/.coding-agent/sessions/<id>/todos.json."""
+    """Manage task plan items stored per session in ~/.xiaoqiao/sessions/<id>/todos.json."""
     try:
         session_id = "global"
         if ctx and ctx.session:
@@ -773,7 +775,7 @@ def _format_todos(todos: list[dict]) -> str:
 
 
 async def _report_plan(steps: list[str], ctx: FunctionInvocationContext | None = None) -> str:
-    """Report execution plan steps. Records per session in ~/.coding-agent/sessions/<id>/plans.json."""
+    """Report execution plan steps. Records per session in ~/.xiaoqiao/sessions/<id>/plans.json."""
     try:
         session_id = "global"
         if ctx and ctx.session:
@@ -809,7 +811,7 @@ async def _log_task_completion(
     success: bool,
     ctx: FunctionInvocationContext | None = None,
 ) -> str:
-    """Log a completed task per session in ~/.coding-agent/sessions/<id>/task_log.jsonl."""
+    """Log a completed task per session in ~/.xiaoqiao/sessions/<id>/task_log.jsonl."""
     try:
         import time
 

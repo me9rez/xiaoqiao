@@ -81,7 +81,7 @@ def run_static_server(root: str, host: str = "127.0.0.1", port: int = 8766) -> t
         except Exception:
             logger.exception("Static server failed")
 
-    thread = threading.Thread(target=_serve, name="coding-agent-static-server", daemon=True)
+    thread = threading.Thread(target=_serve, name="xiaoqiao-static-server", daemon=True)
     thread.start()
     logger.info("Static server on http://%s:%d (root=%s)", host, port, root_path)
     print(f"HTTP READY http://{host}:{port}", file=__import__("sys").stderr, flush=True)

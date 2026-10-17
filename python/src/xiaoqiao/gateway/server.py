@@ -1,6 +1,6 @@
 """Gateway server — reads JSON-RPC from stdin, runs agent loop, emits events to stdout.
 
-The TUI spawns ``python -m coding_agent.main`` as a subprocess.  The gateway
+The TUI spawns ``python -m xiaoqiao.main`` as a subprocess.  The gateway
 reads newline-delimited JSON-RPC requests from stdin (``prompt``, ``cancel``)
 and writes newline-delimited JSON events to stdout.
 
@@ -23,7 +23,7 @@ import logging
 import sys
 from typing import Any
 
-from coding_agent.events import (
+from xiaoqiao.events import (
     AgentEvent,
     DoneEvent,
     ErrorEvent,
@@ -38,9 +38,9 @@ from coding_agent.events import (
     TurnEndEvent,
     UsageEvent,
 )
-from coding_agent.gateway.transport import StdioTransport
-from coding_agent.settings import Settings
-from coding_agent.turn_runner import TurnRunner
+from xiaoqiao.gateway.transport import StdioTransport
+from xiaoqiao.settings import Settings
+from xiaoqiao.turn_runner import TurnRunner
 
 logger = logging.getLogger(__name__)
 
@@ -231,14 +231,14 @@ class GatewayServer:
 
     async def _handle_prompt(self, text: str, session_id: str = "") -> None:
         """Run a single prompt, auto-saving session."""
-        from coding_agent.mcp import format_mcp_tools_for_prompt
-        from coding_agent.session import (
+        from xiaoqiao.mcp import format_mcp_tools_for_prompt
+        from xiaoqiao.session import (
             SessionData,
             create_session,
             load_session,
             save_session,
         )
-        from coding_agent.system_prompt import (
+        from xiaoqiao.system_prompt import (
             BuildSystemPromptOptions,
             build_system_prompt,
             discover_project_context,
@@ -298,7 +298,7 @@ class GatewayServer:
 
     async def _resume_approval(self, call_id: str, approved: bool) -> None:
         """Resume a turn paused for tool approval."""
-        from coding_agent.session import save_session
+        from xiaoqiao.session import save_session
 
         info = self._pending_approvals.pop(call_id, None)
         if info is None:

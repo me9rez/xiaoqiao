@@ -1,13 +1,44 @@
 <!DOCTYPE html>
-<html lang="">
+<html lang="zh-CN" data-color-scheme="light" data-font-scale="medium">
   <head>
     <meta charset="UTF-8">
     <link rel="icon" href="/icon.png">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Coding Agent</title>
+    <meta name="color-scheme" content="light dark">
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#121212" media="(prefers-color-scheme: dark)">
+    <title>小巧</title>
+    <script>
+      // Apply stored theme before first paint. Keys must match src/theme.ts.
+      (function () {
+        var root = document.documentElement
+        try {
+          // Prefer the new keys; migrate the pre-rename ones on first boot.
+          function stored(key, legacyKey) {
+            var value = localStorage.getItem(key)
+            if (value !== null) return value
+            var legacy = localStorage.getItem(legacyKey)
+            if (legacy !== null) {
+              localStorage.setItem(key, legacy)
+              localStorage.removeItem(legacyKey)
+            }
+            return legacy
+          }
+          var scheme = stored('xiaoqiao:color-scheme', 'coding-agent:color-scheme') || 'system'
+          var scale = stored('xiaoqiao:font-scale', 'coding-agent:font-scale') || 'medium'
+          var dark = scheme === 'dark' ||
+            (scheme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+          root.dataset.colorPreference = scheme
+          root.dataset.colorScheme = dark ? 'dark' : 'light'
+          root.dataset.fontScale = scale
+        } catch (error) {
+          // localStorage unavailable; keep defaults from the html tag.
+        }
+      })()
+    </script>
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-gb-web@latest/lxgwwenkaigb-regular/result.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-gb-web@latest/lxgwwenkaigb-medium/result.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource-variable/schibsted-grotesk/index.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource-variable/jetbrains-mono/index.css">
   </head>
   <body>
     <div id="app"></div>

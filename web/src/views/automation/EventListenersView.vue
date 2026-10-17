@@ -58,7 +58,7 @@ const watchEventOptions = [
 ]
 
 const imScopeOptions = [
-  { value: 'mention' as const, label: '仅 @Coding Agent 消息' },
+  { value: 'mention' as const, label: '仅 @小巧 消息' },
   { value: 'private' as const, label: '仅私聊消息' },
   { value: 'all' as const, label: '所有消息' },
 ]
@@ -293,7 +293,7 @@ onMounted(() => {
 
       <div class="rounded-xl bg-[var(--bg-card)] border border-[var(--border)] px-4 py-3 mb-4 flex items-center gap-2 text-sm text-[var(--text-muted)]">
         <Info class="w-4 h-4 flex-shrink-0" />
-        <span>监听事件可通过 HTTP、文件变化、IM 消息等触发 Coding Agent 自动执行任务</span>
+        <span>监听事件可通过 HTTP、文件变化、IM 消息等触发小巧自动执行任务</span>
       </div>
 
       <div v-if="store.loading" class="py-12 text-center text-sm text-[var(--text-muted)]">
@@ -425,7 +425,7 @@ onMounted(() => {
 
             <div>
               <label class="block text-sm font-medium mb-1.5">执行指令</label>
-              <textarea v-model="form.command" placeholder="收到事件后 Coding Agent 要执行的指令..." rows="4" class="w-full px-3 py-2.5 rounded-xl border border-[var(--border)] bg-[var(--bg-page)] outline-none focus:border-[var(--text-muted)] text-sm resize-none" />
+              <textarea v-model="form.command" placeholder="收到事件后小巧要执行的指令..." rows="4" class="w-full px-3 py-2.5 rounded-xl border border-[var(--border)] bg-[var(--bg-page)] outline-none focus:border-[var(--text-muted)] text-sm resize-none" />
               <p class="text-xs text-[var(--text-muted)] mt-1">使用 $EVENT_DATA 引用事件数据</p>
             </div>
 

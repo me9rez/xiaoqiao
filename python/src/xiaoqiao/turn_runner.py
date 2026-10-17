@@ -6,9 +6,9 @@ pending approval).  Keeping it here means one implementation to reason about.
 
 What lives where:
 
-* :class:`~coding_agent.agent_runtime.AgentRuntime` — owns the harness agent and
+* :class:`~xiaoqiao.agent_runtime.AgentRuntime` — owns the harness agent and
   the framework session, and translates framework stream updates into our events.
-* :class:`TurnRunner` (this module) — the coding-agent session lifecycle around
+* :class:`TurnRunner` (this module) — the xiaoqiao session lifecycle around
   it: which session, which system prompt, and what gets persisted.
 
 The framework session is the authoritative conversation state, because it owns
@@ -23,11 +23,11 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from coding_agent.agent_runtime import AgentRuntime, PendingApproval
+from xiaoqiao.agent_runtime import AgentRuntime, PendingApproval
 
 if TYPE_CHECKING:
-    from coding_agent.events import AgentEvent
-    from coding_agent.settings import Settings
+    from xiaoqiao.events import AgentEvent
+    from xiaoqiao.settings import Settings
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +41,7 @@ class TurnResult:
 
 
 class TurnRunner:
-    """Runs agent turns for coding-agent sessions, owning runtime lifetime.
+    """Runs agent turns for xiaoqiao sessions, owning runtime lifetime.
 
     A runtime is cached per session id: the framework session inside it is the
     conversation state, so rebuilding it per turn would lose context — and
@@ -80,7 +80,7 @@ class TurnRunner:
         if cached is not None:
             return cached
 
-        from coding_agent.framework_session import get_or_create_framework_session
+        from xiaoqiao.framework_session import get_or_create_framework_session
 
         runtime = AgentRuntime(
             client=client,
@@ -98,8 +98,8 @@ class TurnRunner:
 
     def remember(self, session: Any, runtime: AgentRuntime) -> None:
         """Persist the transcript (display) and the framework session (model state)."""
-        from coding_agent.framework_session import save_framework_session
-        from coding_agent.session import message_to_dict
+        from xiaoqiao.framework_session import save_framework_session
+        from xiaoqiao.session import message_to_dict
 
         session.messages = [message_to_dict(m) for m in runtime.transcript]
         save_framework_session(runtime.agent_session)

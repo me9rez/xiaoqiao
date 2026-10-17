@@ -1,4 +1,4 @@
-"""System prompt assembly for the coding agent.
+"""System prompt assembly for 小巧.
 
 Builds a system prompt that tells the model its identity, capabilities,
 tool interfaces, and project context.

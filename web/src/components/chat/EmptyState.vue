@@ -181,7 +181,7 @@ onUnmounted(() => {
     </div>
 
     <h2 class="text-2xl font-semibold mb-2 flex items-center gap-2">
-      <span>交给 Coding Agent 就行啦</span>
+      <span>交给小巧就行啦</span>
       <span class="text-2xl">✨</span>
     </h2>
     <p class="text-sm text-[var(--text-muted)] mb-8">

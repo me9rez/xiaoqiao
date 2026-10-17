@@ -1,6 +1,6 @@
 """MCP server configuration and tool construction.
 
-Reads the ``mcpServers`` section from ``~/.coding-agent/settings.json`` and
+Reads the ``mcpServers`` section from ``~/.xiaoqiao/settings.json`` and
 constructs ``agent_framework`` MCP tool wrappers for each configured server.
 """
 
@@ -9,9 +9,9 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from coding_agent.settings import Settings
-from coding_agent.settings import load as load_settings
-from coding_agent.settings import save as save_settings
+from xiaoqiao.settings import Settings
+from xiaoqiao.settings import load as load_settings
+from xiaoqiao.settings import save as save_settings
 
 logger = logging.getLogger(__name__)
 

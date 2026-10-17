@@ -220,7 +220,7 @@ onMounted(() => {
         <div class="flex items-center gap-3">
           <button class="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm text-[var(--text-muted)] hover:bg-[var(--bg-muted)] transition">
             <Sparkles class="w-4 h-4" />
-            <span>让 Coding Agent 帮你创建</span>
+            <span>让小巧帮你创建</span>
           </button>
           <button
             class="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#d9896d] text-white text-sm font-medium hover:opacity-90 transition"
@@ -325,7 +325,7 @@ onMounted(() => {
               <label class="block text-sm font-medium mb-1.5">任务指令</label>
               <textarea
                 v-model="form.command"
-                placeholder="输入 Coding Agent 要执行的指令..."
+                placeholder="输入小巧要执行的指令..."
                 rows="4"
                 class="w-full px-3 py-2.5 rounded-xl border border-[var(--border)] bg-[var(--bg-page)] outline-none focus:border-[var(--text-muted)] text-sm resize-none"
               />

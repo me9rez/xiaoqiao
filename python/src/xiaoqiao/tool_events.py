@@ -19,7 +19,7 @@ from typing import Any
 from agent_framework._middleware import FunctionInvocationContext, FunctionMiddleware
 from agent_framework._types import Content
 
-from coding_agent.events import (
+from xiaoqiao.events import (
     AgentEvent,
     ToolCallStartEvent,
     ToolExecutionEndEvent,

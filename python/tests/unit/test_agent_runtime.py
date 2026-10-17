@@ -10,8 +10,8 @@ from agent_framework._middleware import FunctionInvocationContext
 from agent_framework._tools import SKIP_PARSING, FunctionTool
 from agent_framework._types import AgentResponseUpdate, Content, UsageDetails
 
-from coding_agent.agent_runtime import AgentRuntime, dispatch_update
-from coding_agent.events import (
+from xiaoqiao.agent_runtime import AgentRuntime, dispatch_update
+from xiaoqiao.events import (
     TextDeltaEvent,
     ThinkingDeltaEvent,
     ToolCallStartEvent,
@@ -19,9 +19,9 @@ from coding_agent.events import (
     ToolExecutionStartEvent,
     UsageEvent,
 )
-from coding_agent.settings import Settings
-from coding_agent.tool_events import ToolEventMiddleware, extract_tool_result
-from coding_agent.tools.coding_tools import _ToolResult
+from xiaoqiao.settings import Settings
+from xiaoqiao.tool_events import ToolEventMiddleware, extract_tool_result
+from xiaoqiao.tools.coding_tools import _ToolResult
 
 
 class _StubClient:
