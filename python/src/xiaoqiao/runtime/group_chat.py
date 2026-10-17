@@ -27,6 +27,27 @@ logger = logging.getLogger(__name__)
 ExecuteBot = Callable[["Bot", "SessionRecord", list[GroupMessage]], Awaitable[str]]
 
 
+def render_group_context(bot: Bot, messages: list[GroupMessage], names: dict[str, str]) -> str:
+    """Render new group messages as a prompt block for one bot.
+
+    Other bots' messages are labelled with their name; the bot's own messages
+    are labelled ``你`` so it can keep its own voice without confusing itself
+    with a participant.
+    """
+    lines = ["以下是群聊中你需要回应的新消息（按时间顺序）："]
+    for message in messages:
+        if message.author_type == "user":
+            author = "用户"
+        elif message.author_type == "system":
+            author = "系统"
+        else:
+            author = "你" if message.author_id == bot.id else names.get(message.author_id, "另一个 Bot")
+        lines.append(f"[{author}] {message.text}")
+    lines.append("")
+    lines.append("请直接给出你的回复；如果你需要另一位 Bot 接着处理，可以在回复里 @ 对方。")
+    return "\n".join(lines)
+
+
 @dataclass
 class _Pending:
     bot_id: str

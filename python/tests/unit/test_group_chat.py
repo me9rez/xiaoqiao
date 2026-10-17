@@ -11,7 +11,7 @@ import pytest
 from xiaoqiao.bots import BotRepository
 from xiaoqiao.groups import GroupRepository
 from xiaoqiao.router import HopPolicy
-from xiaoqiao.runtime.group_chat import GroupChatService
+from xiaoqiao.runtime.group_chat import GroupChatService, render_group_context
 from xiaoqiao.runtime.group_messages import GroupMessageRepository
 from xiaoqiao.runtime.sessions import SessionRepository
 
@@ -57,6 +57,27 @@ class Harness:
             return replies.get(bot.slug, f"{bot.name} 收到")
 
         return execute
+
+
+class TestRenderContext:
+    def test_labels_authors_and_self(self, tmp_path: Path) -> None:
+        harness = Harness(tmp_path)
+        messages = [
+            harness.messages.append(harness.group.id, author_type="user", author_id="owner", text="查行情"),
+            harness.messages.append(harness.group.id, author_type="bot", author_id=harness.watch.id, text="在查"),
+            harness.messages.append(harness.group.id, author_type="bot", author_id=harness.coder.id, text="收到"),
+        ]
+
+        rendered = render_group_context(
+            harness.coder,
+            messages,
+            {harness.watch.id: "盯盘", harness.coder.id: "Coder"},
+        )
+
+        assert "[用户] 查行情" in rendered
+        assert "[盯盘] 在查" in rendered
+        assert "[你] 收到" in rendered
+        assert "@ 对方" in rendered
 
 
 class TestRouting:

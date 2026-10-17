@@ -40,7 +40,9 @@ from xiaoqiao.mcp import (
     uninstall_connector,
     update_connector_config,
 )
+from xiaoqiao.runtime.group_chat import GroupChatService, render_group_context
 from xiaoqiao.runtime.group_messages import GroupMessageRepository, message_to_dict
+from xiaoqiao.runtime.sessions import SessionRepository
 from xiaoqiao.session import (
     create_session,
     delete_session,
@@ -227,6 +229,7 @@ class WsGatewayServer:
         self._bots = BotRepository()
         self._groups = GroupRepository()
         self._group_messages = GroupMessageRepository()
+        self._sessions_db = SessionRepository()
         self._session: Any = None
         self._ws: ServerConnection | None = None
         self._emit_tasks: list[asyncio.Task[None]] = []
@@ -255,13 +258,18 @@ class WsGatewayServer:
         path = ctx.cwd or str(Path.cwd().resolve())
         return {"name": Path(path).name, "path": path}
 
-    def _emit(self, event: AgentEvent, session_id: str = "") -> None:
+    def _emit(self, event: AgentEvent, session_id: str = "", group_id: str = "") -> None:
         obj = _serialize_event(event)
         if session_id:
             obj["sessionId"] = session_id
+        if group_id:
+            obj["groupId"] = group_id
         if obj.get("type") not in ("text_delta", "thinking_delta", "tool_execution_delta"):
             fields = _summarize_event(obj)
             print(f"→ {obj.get('type', '?')} {fields}", file=sys.stderr, flush=True)
+        self._broadcast(obj)
+
+    def _broadcast(self, obj: dict[str, Any]) -> None:
         if not self._connections:
             return
         data = json.dumps(obj, ensure_ascii=False)
@@ -272,6 +280,15 @@ class WsGatewayServer:
                 task.add_done_callback(self._emit_tasks.remove)
             except Exception:
                 self._connections.discard(conn)
+
+    def _emit_group_message(self, group_id: str, message: Any) -> None:
+        self._broadcast(
+            {
+                "type": "group_message_created",
+                "groupId": group_id,
+                "message": message_to_dict(message),
+            }
+        )
 
     def _send_rpc_response(self, request_id: str, result: Any) -> None:
         if self._ws is None:
@@ -316,8 +333,20 @@ class WsGatewayServer:
                     text = params.get("text", "")
                     session_id = params.get("sessionId", "")
                     bot_id = params.get("botId", "")
-                    logger.info("← prompt (bot=%s, session=%s, text=%.80s)", bot_id, session_id, text)
-                    self._current_tasks[session_id] = asyncio.create_task(self._handle_prompt(text, session_id, bot_id))
+                    group_id = params.get("groupId", "")
+                    logger.info(
+                        "← prompt (bot=%s, group=%s, session=%s, text=%.80s)",
+                        bot_id,
+                        group_id,
+                        session_id,
+                        text,
+                    )
+                    if group_id:
+                        self._current_tasks[group_id] = asyncio.create_task(self._handle_group_prompt(group_id, text))
+                    else:
+                        self._current_tasks[session_id] = asyncio.create_task(
+                            self._handle_prompt(text, session_id, bot_id)
+                        )
                 elif method == "cancel":
                     session_id = params.get("sessionId", "")
                     if session_id and session_id in self._current_tasks:
@@ -871,13 +900,99 @@ class WsGatewayServer:
             self._session = session
             save_session(session)
 
+    async def _handle_group_prompt(self, group_id: str, text: str) -> None:
+        chat = GroupChatService(self._bots, self._groups, self._sessions_db, self._group_messages)
+
+        async def execute(bot: Any, session: Any, messages: list[Any]) -> str:
+            return await self._execute_group_bot(bot, session, messages, group_id)
+
+        try:
+            appended = await chat.handle_user_message(group_id, text, execute)
+            for message in appended:
+                self._emit_group_message(group_id, message)
+        except asyncio.CancelledError:
+            logger.info("Group prompt cancelled: %s", group_id)
+        except Exception as exc:
+            logger.exception("Group prompt failed")
+            self._emit(ErrorEvent(message=str(exc), recoverable=False), group_id=group_id)
+        finally:
+            self._current_tasks.pop(group_id, None)
+
+    async def _execute_group_bot(
+        self,
+        bot: Any,
+        session: Any,
+        messages: list[Any],
+        group_id: str,
+    ) -> str:
+        """Run one bot turn against the new group messages and return its text."""
+        from xiaoqiao.framework_session import save_framework_session
+        from xiaoqiao.mcp import format_mcp_tools_for_prompt
+        from xiaoqiao.system_prompt import (
+            BuildSystemPromptOptions,
+            build_system_prompt,
+            discover_project_context,
+        )
+
+        settings = self._settings if isinstance(self._settings, Settings) else None
+        primary_model = getattr(settings, "primary_model", "") if settings else ""
+        session_model = session.model or bot.model or primary_model
+        names = {item.id: item.name for item in self._bots.list()}
+        prompt_block = render_group_context(bot, messages, names)
+        ctx = discover_project_context(bot.workspace or None)
+        sys_prompt = build_system_prompt(
+            BuildSystemPromptOptions(
+                persona=bot.persona,
+                bot_name=bot.name,
+                project_context=ctx,
+                mcp_tools_prompt=format_mcp_tools_for_prompt(self._mcp_tools),
+                tool_approval=getattr(settings, "tool_approval", None),
+            )
+        )
+
+        provider_id, model_id = _split_selected_model(session_model)
+        level = thinking_level(settings, session_model) if settings else None
+        options = thinking_options_for_model(level, provider_id, model_id)
+        client = self._client_for(session_model)
+
+        def _on_event(event: AgentEvent) -> None:
+            self._emit(event, session_id=session.id, group_id=group_id)
+
+        runtime = self._runtime_for(
+            session,
+            client,
+            sys_prompt,
+            options,
+            settings,
+            bool(getattr(settings, "tool_approval", {}).get("enabled", True)) if settings else True,
+        )
+        outcome = await runtime.run_turn(prompt_block, _on_event)
+        save_framework_session(runtime.agent_session)
+        if outcome.pending_approval is not None:
+            pending = outcome.pending_approval
+            self._pending_approvals[pending.call_id] = {
+                "runtime": runtime,
+                "pending": pending,
+                "session": session,
+                "group_id": group_id,
+            }
+            return "（需要你审批后才能继续）"
+        return outcome.text
+
     def _remember_runtime(self, session: Any, runtime: AgentRuntime) -> None:
         """Persist both the display transcript and the framework session state.
 
         The JSONL transcript feeds the UI/history; the framework session holds the
         tool_call/tool_result pairing the model needs, so it must be saved too.
+        Group sessions are database records without a transcript field, so only
+        the framework snapshot applies there.
         """
-        self._turn_runner.remember(session, runtime)
+        if hasattr(session, "messages"):
+            self._turn_runner.remember(session, runtime)
+            return
+        from xiaoqiao.framework_session import save_framework_session
+
+        save_framework_session(runtime.agent_session)
 
     def _runtime_for(
         self,
@@ -910,15 +1025,16 @@ class WsGatewayServer:
         runtime: AgentRuntime = info["runtime"]
         pending: PendingApproval = info["pending"]
         session = info["session"]
+        group_id = info.get("group_id", "")
 
         def _on_event(event: AgentEvent) -> None:
-            if isinstance(event, UsageEvent):
+            if isinstance(event, UsageEvent) and hasattr(session, "input_tokens"):
                 session.input_tokens += event.input_tokens
                 session.output_tokens += event.output_tokens
                 session.total_tokens += event.total_tokens
                 session.cache_read_tokens += event.cache_read_tokens
                 session.reasoning_tokens += event.reasoning_tokens
-            self._emit(event, session_id=session.id)
+            self._emit(event, session_id=session.id, group_id=group_id)
 
         try:
             outcome = await runtime.resolve_approval(pending.call_id, approved, _on_event)
@@ -928,9 +1044,10 @@ class WsGatewayServer:
                     "runtime": runtime,
                     "pending": outcome.pending_approval,
                     "session": session,
+                    "group_id": group_id,
                 }
             self._remember_runtime(session, runtime)
-            save_session(session)
+            self._save_session_if_jsonl(session)
         except asyncio.CancelledError:
             logger.info("Approval resume cancelled")
             self._emit(ErrorEvent(message="Agent run cancelled", recoverable=True), session_id=session.id)
@@ -940,6 +1057,10 @@ class WsGatewayServer:
             self._emit(ErrorEvent(message=str(exc), recoverable=False), session_id=session.id)
             self._emit(DoneEvent(), session_id=session.id)
         finally:
+            self._save_session_if_jsonl(session)
+
+    def _save_session_if_jsonl(self, session: Any) -> None:
+        if hasattr(session, "messages"):
             save_session(session)
 
     async def run_forever(self) -> None:
