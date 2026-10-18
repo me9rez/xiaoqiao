@@ -10,12 +10,11 @@ import {
   Plus,
   Send,
 } from '@lucide/vue'
-import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
-import { gatewayService } from '@/services/gateway'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
+import { useSettingsStore } from '@/stores/settings'
 import { useWorkspaceStore } from '@/stores/workspace'
-import type { Settings } from '@/types/session'
-import ModelSelector from './ModelSelector.vue'
+import ModelPicker from './ModelPicker.vue'
 
 const emit = defineEmits<{
   send: [text: string, model: string]
@@ -23,26 +22,12 @@ const emit = defineEmits<{
 }>()
 
 const sessionsStore = useSessionsStore()
+const settingsStore = useSettingsStore()
 const workspaceStore = useWorkspaceStore()
 const text = ref('')
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
-const settings = ref<Settings | null>(null)
-let unsubscribeOpen: (() => void) | null = null
 
-const modelOptions = computed(() => {
-  const opts: { value: string; label: string; providerId: string; providerName: string; modelId: string }[] = []
-  if (!settings.value) return opts
-  for (const [alias, model] of Object.entries(settings.value.models)) {
-    opts.push({
-      value: alias,
-      label: `${model.provider} / ${model.display_name || model.model}`,
-      providerId: model.provider,
-      providerName: model.provider,
-      modelId: model.model,
-    })
-  }
-  return opts
-})
+const hasModels = computed(() => Object.keys(settingsStore.settings.models).length > 0)
 
 const categories = [
   { key: 'office', label: '办公整理', icon: Briefcase },
@@ -103,26 +88,11 @@ const currentSuggestions = computed(() => {
   ]
 })
 
-async function loadSettings() {
-  if (!gatewayService.isConnected()) return
-  try {
-    const data = await gatewayService.call<Settings>('getSettings')
-    settings.value = data
-  } catch (err) {
-    console.error('Failed to load settings', err)
-  }
-}
+const effectiveModel = computed(() => settingsStore.settings.default_model || '')
 
-const effectiveModel = computed(() => settings.value?.default_model || '')
-
-async function handleModelChange(value: string) {
-  if (!value || !settings.value) return
-  try {
-    await gatewayService.call<Settings>('updateSettings', { default_model: value })
-    settings.value.default_model = value
-  } catch (err) {
-    console.error('Failed to update model', err)
-  }
+function handleModelChange(value: string) {
+  if (!value) return
+  void settingsStore.setDefaultModel(value)
 }
 
 function adjustHeight() {
@@ -162,14 +132,7 @@ async function handleNewChat() {
 }
 
 onMounted(() => {
-  unsubscribeOpen = gatewayService.on('open', () => {
-    loadSettings()
-  })
-  loadSettings()
-})
-
-onUnmounted(() => {
-  unsubscribeOpen?.()
+  settingsStore.ensureLoaded()
 })
 </script>
 
@@ -212,9 +175,8 @@ onUnmounted(() => {
           </div>
 
           <div class="flex items-center gap-2">
-            <ModelSelector
-              v-if="settings"
-              :options="modelOptions"
+            <ModelPicker
+              v-if="hasModels"
               :value="effectiveModel"
               @change="handleModelChange"
             />

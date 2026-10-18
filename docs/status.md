@@ -162,6 +162,22 @@ esources/python，wheel 装进它自己的 site-packages；打包版引擎来自
 
 未做：`api_key` 仍以明文经本机 WS 传给页面（要遮罩需引入 `has_api_key` + 「留空不改」语义）；图片生成无后端工具，页面上明确标注不提供配置。
 
+## 模型选择交互（2026-10-18）
+
+交互参考 Kimi Code CLI 的模型选择器，规范记入 [design.md](design.md) §14。
+
+| 项 | 状态 |
+|---|---|
+| 胶囊 | ✅ 输入框右下显示「显示名 · 档位」，档位用强调色；模型为空时不渲染 |
+| 浮层 | ✅ provider 名 → 该 provider 的模型（当前项打勾）→ 思考档位（默认 / High / Max）→ 缓存提示 → 更多模型…；此前只有一个下拉，没有 provider 分组与档位 |
+| 对话框 | ✅ 「切换模型」：搜索（匹配名字 / 模型 id / 别名 / provider / 能力）、provider 筛选 chip、`deepseek · 128k ctx · 思考 · 工具调用` 副标题、收藏星、↑↓ / Enter / Esc |
+| 数据源 | ✅ 两个视图共用一个 `useSettingsStore`，删掉 ChatInput 与 EmptyState 各自 `getSettings` 的副本；`utils/models.ts` 统一名字、档位与副标题 |
+| 落点 | ✅ 选模型写 `default_model`（会话内另写 `session.model`）；思考档位写 `[thinking] effort`，「默认」即清空该键 |
+| 顺带修复 | ✅ 点浮层内元素原先在 `mousedown` 阶段被判为「点外部」而先卸载，导致点模型 / 更多模型无反应（Teleport 到 `body` 后 `rootRef.contains` 不再成立） |
+| 回归 | ✅ vitest **102**、type-check 与 `pnpm build` 通过；真实网关 + Chromium 走完「改模型 → 落盘 → 改回」「选 High → 落盘 → 点默认清空」两次往返 |
+
+未做：思考档位是 `config.toml` 的全局 `[thinking] effort`（与设置页同一字段），不是按会话存储——参考实现是每会话值，需要新表 + 运行时读取路径才能对齐。
+
 未做（方案 §12 明示）：Kimi 的 `managed:` 供应商 / OAuth / `secondary_model` / `hooks` / `background` /
 `database` / `watch` / `tui.toml` / 项目级 `local.toml`；`anthropic` 客户端分派留作后续。
 

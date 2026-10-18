@@ -2,10 +2,9 @@
 import { Plus, Send, Square } from '@lucide/vue'
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { onComposerInsert } from '@/services/composer'
-import { gatewayService } from '@/services/gateway'
 import { useChatStore } from '@/stores/chat'
-import type { Settings } from '@/types/session'
-import ModelSelector from './ModelSelector.vue'
+import { useSettingsStore } from '@/stores/settings'
+import ModelPicker from './ModelPicker.vue'
 
 const props = defineProps<{
   disabled?: boolean
@@ -19,27 +18,14 @@ const emit = defineEmits<{
 }>()
 
 const chatStore = useChatStore()
+const settingsStore = useSettingsStore()
 const text = ref('')
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
-const settings = ref<Settings | null>(null)
 
-let unsubscribeOpen: (() => void) | null = null
 let unsubscribeComposer: (() => void) | null = null
 
-const modelOptions = computed(() => {
-  const opts: { value: string; label: string; providerId: string; providerName: string; modelId: string }[] = []
-  if (!settings.value) return opts
-  for (const [alias, model] of Object.entries(settings.value.models)) {
-    opts.push({
-      value: alias,
-      label: `${model.provider} / ${model.display_name || model.model}`,
-      providerId: model.provider,
-      providerName: model.provider,
-      modelId: model.model,
-    })
-  }
-  return opts
-})
+const effectiveModel = computed(() => props.model || settingsStore.settings.default_model || '')
+const hasModels = computed(() => Object.keys(settingsStore.settings.models).length > 0)
 
 const estimatedTokens = computed(() => {
   let chars = 0
@@ -51,29 +37,10 @@ const estimatedTokens = computed(() => {
   return Math.round(chars / 4)
 })
 
-async function loadSettings() {
-  if (!gatewayService.isConnected()) return
-  try {
-    const data = await gatewayService.call<Settings>('getSettings')
-    settings.value = data
-  } catch (err) {
-    console.error('Failed to load settings', err)
-  }
-}
-
-const effectiveModel = computed(() => props.model || settings.value?.default_model || '')
-
-async function handleModelChange(value: string) {
+function handleModelChange(value: string) {
   if (!value) return
   emit('update:model', value)
-  try {
-    await gatewayService.call<Settings>('updateSettings', { default_model: value })
-    if (settings.value) {
-      settings.value.default_model = value
-    }
-  } catch (err) {
-    console.error('Failed to update primary model', err)
-  }
+  void settingsStore.setDefaultModel(value)
 }
 
 function adjustHeight() {
@@ -115,10 +82,6 @@ function setText(value: string) {
 defineExpose({ setText })
 
 onMounted(() => {
-  unsubscribeOpen = gatewayService.on('open', () => {
-    loadSettings()
-  })
-  loadSettings()
   // Files dragged onto the desktop window land here as real paths.
   unsubscribeComposer = onComposerInsert((inserted) => {
     text.value = text.value ? `${text.value}\n${inserted}` : inserted
@@ -128,7 +91,6 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  unsubscribeOpen?.()
   unsubscribeComposer?.()
 })
 </script>
@@ -156,9 +118,8 @@ onUnmounted(() => {
           </div>
 
           <div class="flex items-center gap-2">
-            <ModelSelector
-              v-if="settings"
-              :options="modelOptions"
+            <ModelPicker
+              v-if="hasModels"
               :value="effectiveModel"
               placement="top"
               @change="handleModelChange"

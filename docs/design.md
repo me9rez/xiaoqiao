@@ -842,3 +842,45 @@ html[data-color-scheme="dark"] {
 ```
 
 以上只允许放在 `tokens.css` 的组件私有区，不提升为全局语义 token；颜色一律复用 §3 的既有 token。
+
+---
+
+## 14. 模型选择（本仓库扩展）
+
+> **来源说明**：交互参考 Kimi Code CLI 的模型选择器（输入框内的模型胶囊 → 轻量浮层 → 全量对话框）。
+> **约束**：同 §13——只用 §3–§7 的 token；两处视图共用 `web/src/utils/models.ts` 的命名与副标题，不得各自拼装。
+
+### 14.1 三层结构
+
+| 层 | 触发 | 内容 |
+| --- | --- | --- |
+| 胶囊 | 常驻输入框右下 | 当前模型显示名 + `· <档位>`（档位用 `--color-accent`）；无档位时只显示名字 |
+| 浮层 | 点胶囊 | 当前 provider 名 → 该 provider 的模型列表（当前项打勾）→ 思考档位 → 提示文案 → 更多模型… |
+| 对话框 | 浮层底部「更多模型…」 | 搜索 + provider 筛选 + 全量列表 + 键盘提示 |
+
+### 14.2 规格
+
+- 胶囊：高 30px（§8.1 sm），`--radius-md`，0.5px `--color-line`，背景 `--color-surface-raised`，文字 12px / `--color-text-muted`；悬停边框转 `--color-line-strong`、文字转 `--color-text`。
+- 浮层：宽 288px，`--radius-lg`，`--color-surface-overlay` + `--shadow-menu` + 0.5px `--color-line`；分区之间用 0.5px `--color-line` 分隔，不靠阴影叠加。
+- 浮层行：高 30px，13px；当前模型 `--color-selected` 底 + `--color-accent` 打勾图标（**图标 + 底色**，不只靠颜色）。
+- 思考档位：Segmented 小号按钮，高 24px、`--radius-sm`、12px；选中 `--color-send-bg` / `--color-send-icon`，未选中 `--color-surface` / `--color-text-muted`。首项固定为「默认」（= 不固定档位，跟随模型自己的 `default_effort`）。
+- 提示文案：12px / `--color-text-faint`，行高 1.6；写明「切换模型或思考档位会使已有的提示词缓存失效」。
+- 对话框：`max-width` 672px，距顶部 10vh，`--radius-xl`，`--shadow-menu`；遮罩 `rgba(0,0,0,.4)`。
+- 对话框行：名字 15px / `--color-text-strong`，副标题 12px / `--color-text-faint`，形如 `deepseek · 128k ctx · 思考 · 工具调用`；右侧收藏星 + 当前项打勾。
+- 筛选 chip：高 28px、`--radius-full`、12px；选中 `--color-send-bg` / `--color-send-icon`，未选中 `--color-surface` / `--color-text-muted`。
+- 键盘：↑↓ 循环、Enter 选中、Esc 关闭；底部用 kbd 小帽（`--radius-xs` + 0.5px `--color-line-strong` + `--font-mono` 11px）说明。
+
+### 14.3 Do / Don't
+
+**Do**
+
+- 浮层只列当前 provider 的模型；跨 provider 一律走对话框。
+- 对话框搜索同时匹配显示名、模型 id、别名、provider 与能力名。
+- 打开对话框时聚焦搜索框，并把高亮定位到当前模型。
+
+**Don't**
+
+- 不要在胶囊里显示 `provider/model` 全串——胶囊是「结果」，别名在对话框副标题里出现。
+- 不要用 `--color-accent` 底填充整行表示选中（蓝只表示可操作/已选中/焦点，填充用 `--color-selected`）。
+- 不要让浮层在 `mousedown` 时就关闭：浮层是 Teleport 到 `body` 的，判断「点在内部」必须同时检查触发元素与浮层自身，否则点击会在 `click` 触发前失去目标。
+

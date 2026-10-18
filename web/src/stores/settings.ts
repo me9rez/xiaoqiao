@@ -85,6 +85,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const notice = ref<string | null>(null)
   const probes = ref<Record<string, { loading: boolean; result: ProviderProbe | null }>>({})
   const saved = ref<string>(stableStringify(settings.value))
+  const loaded = ref(false)
 
   const modelOptions = computed(() => {
     const options: { value: string; label: string }[] = []
@@ -139,6 +140,7 @@ export const useSettingsStore = defineStore('settings', () => {
       const data = await gatewayService.call<Settings>('getSettings')
       settings.value = { ...createDefaultSettings(), ...data }
       saved.value = stableStringify(settings.value)
+      loaded.value = true
     } catch (err) {
       error.value = err instanceof Error ? err.message : String(err)
     } finally {
@@ -185,6 +187,51 @@ export const useSettingsStore = defineStore('settings', () => {
     settings.value = JSON.parse(saved.value) as Settings
     error.value = null
     notice.value = null
+  }
+
+  /**
+   * A partial save from the composer must not make the settings page believe its
+   * own unsaved edits went through, so only the patched keys leave the dirty set.
+   */
+  function markSaved(mutate: (snapshot: Settings) => void) {
+    const snapshot = JSON.parse(saved.value) as Settings
+    mutate(snapshot)
+    saved.value = stableStringify(snapshot)
+  }
+
+  async function patchRemote(patch: Record<string, unknown>): Promise<boolean> {
+    try {
+      await gatewayService.call('updateSettings', patch)
+      return true
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : String(err)
+      return false
+    }
+  }
+
+  /** Composer affordance: pick a model without touching anything else. */
+  async function setDefaultModel(alias: string): Promise<boolean> {
+    if (!alias || settings.value.default_model === alias) return true
+    settings.value.default_model = alias
+    markSaved((snapshot) => {
+      snapshot.default_model = alias
+    })
+    return patchRemote({ default_model: alias })
+  }
+
+  /** Composer affordance: `[thinking] effort` in config.toml (`null` = follow the model). */
+  async function setThinkingEffort(effort: string | null): Promise<boolean> {
+    if (settings.value.thinking.effort === effort) return true
+    const thinking = { ...settings.value.thinking, effort }
+    settings.value.thinking = thinking
+    markSaved((snapshot) => {
+      snapshot.thinking = { ...thinking }
+    })
+    return patchRemote({ thinking })
+  }
+
+  function ensureLoaded() {
+    if (!loaded.value && !loading.value) void loadSettings()
   }
 
   // ── providers ────────────────────────────────────────────────
@@ -310,6 +357,7 @@ export const useSettingsStore = defineStore('settings', () => {
     error,
     notice,
     probes,
+    loaded,
     modelOptions,
     providerOptions,
     providerIds,
@@ -322,8 +370,11 @@ export const useSettingsStore = defineStore('settings', () => {
     load,
     loadSettings,
     loadStatus,
+    ensureLoaded,
     saveSettings,
     discard,
+    setDefaultModel,
+    setThinkingEffort,
     updateProvider,
     addProvider,
     removeProvider,
