@@ -50,6 +50,8 @@ from xiaoqiao.mcp import (
 from xiaoqiao.provider_probe import probe_provider
 from xiaoqiao.runtime.approvals import ApprovalBroker, approval_to_dict
 from xiaoqiao.runtime.artifacts import ArtifactRepository, artifact_to_dict
+from xiaoqiao.runtime.capabilities import CapabilityRepository
+from xiaoqiao.runtime.capabilities import describe as describe_capabilities
 from xiaoqiao.runtime.channels import ChannelRepository, channel_to_dict
 from xiaoqiao.runtime.group_chat import GroupChatService, render_group_context
 from xiaoqiao.runtime.group_messages import GroupMessageRepository, message_to_dict
@@ -311,6 +313,7 @@ class WsGatewayServer:
         self._scheduler = Scheduler(self._routines, self._fire_routine)
         self._memory = MemoryRepository(db_path)
         self._artifacts = ArtifactRepository(db_path)
+        self._capabilities = CapabilityRepository(db_path)
         self._channels = ChannelRepository(db_path)
         self._adapters: dict[str, TelegramAdapter] = {}
         self._runs = RunRepository(db_path, on_change=self._broadcast_activity)
@@ -1237,6 +1240,31 @@ class WsGatewayServer:
                     except Exception as exc:
                         logger.exception("updateSkill failed")
                         self._send_rpc_error(request_id, str(exc))
+                elif method == "listBotCapabilities":
+                    try:
+                        bot_id = str(params.get("botId") or "")
+                        items = describe_capabilities(
+                            bot_id,
+                            connectors=list_connectors(),
+                            repo=self._capabilities,
+                        )
+                        self._send_rpc_response(request_id, {"botId": bot_id, "capabilities": items})
+                    except Exception as exc:
+                        logger.exception("listBotCapabilities failed")
+                        self._send_rpc_error(request_id, str(exc))
+                elif method == "setBotCapability":
+                    try:
+                        bot_id = str(params.get("botId") or "")
+                        capability = str(params.get("capability") or "")
+                        enabled = bool(params.get("enabled", True))
+                        self._capabilities.set_enabled(bot_id, capability, enabled)
+                        self._send_rpc_response(
+                            request_id,
+                            {"botId": bot_id, "capability": capability, "enabled": enabled},
+                        )
+                    except Exception as exc:
+                        logger.exception("setBotCapability failed")
+                        self._send_rpc_error(request_id, str(exc))
                 elif method == "listConnectors":
                     try:
                         connectors = list_connectors()
@@ -2036,11 +2064,17 @@ class WsGatewayServer:
         )
 
     def _tools_for(self, bot: Any) -> list[Any]:
-        """Apply the bot's tool whitelist; an empty list means "all tools"."""
+        """Apply the bot's tool whitelist and its disabled capabilities."""
         allowed = set(getattr(bot, "tools", ()) or ())
-        if not allowed:
-            return list(self._tools)
-        return [tool for tool in self._tools if getattr(tool, "name", "") in allowed]
+        tools = (
+            list(self._tools) if not allowed else [tool for tool in self._tools if getattr(tool, "name", "") in allowed]
+        )
+        disabled = self._capabilities.disabled_mcp_servers(getattr(bot, "id", ""))
+        if not disabled:
+            return tools
+        # MCP tools are named ``mcp__<server>__<tool>``, so a disabled server is a prefix.
+        blocked = tuple(f"mcp__{server}__" for server in disabled)
+        return [tool for tool in tools if not str(getattr(tool, "name", "")).startswith(blocked)]
 
     async def _resume_approval(self, call_id: str, approved: bool) -> None:
         """Resume a turn paused for tool approval."""

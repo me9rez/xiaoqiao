@@ -165,6 +165,7 @@ class UsageRepository:
             }
             for row in rows
         ]
+
     def by_bot(
         self,
         *,
@@ -221,10 +222,7 @@ class UsageRepository:
         query += " GROUP BY day, bot_id ORDER BY day ASC"
         with self._connect() as conn:
             rows = conn.execute(query, values).fetchall()
-        return [
-            {"date": row["day"], "botId": row["bot_id"], "tokens": int(row["tokens"])}
-            for row in rows
-        ]
+        return [{"date": row["day"], "botId": row["bot_id"], "tokens": int(row["tokens"])} for row in rows]
 
 
 def budget_exceeded(

@@ -164,6 +164,15 @@ CREATE TABLE IF NOT EXISTS run_steps (
   PRIMARY KEY (run_id, seq)
 );
 
+-- Per-bot capability switches. A missing row means "use the default" (enabled),
+-- so adding this table needs no migration for existing databases.
+CREATE TABLE IF NOT EXISTS bot_capabilities (
+  bot_id     TEXT NOT NULL,
+  capability TEXT NOT NULL,
+  enabled    INTEGER NOT NULL DEFAULT 1,
+  PRIMARY KEY (bot_id, capability)
+);
+
 -- The same steps, frozen into a routine so it can be reviewed and replayed later.
 CREATE TABLE IF NOT EXISTS routine_steps (
   routine_id   TEXT NOT NULL,

@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
 import { gatewayService } from '@/services/gateway'
-import type { Bot, BotDraft } from '@/types/bot'
+import type { Bot, BotCapability, BotDraft } from '@/types/bot'
 
 const ACTIVE_BOT_KEY = 'xiaoqiao:active-bot'
 
@@ -96,5 +96,24 @@ export const useBotsStore = defineStore('bots', () => {
     }
   }
 
-  return { bots, activeBotId, activeBot, loading, error, load, create, update, remove, selectBot }
+  async function capabilities(botId: string): Promise<BotCapability[]> {
+    try {
+      const result = await gatewayService.call<{ capabilities: BotCapability[] }>('listBotCapabilities', { botId })
+      return result.capabilities ?? []
+    } catch {
+      return []
+    }
+  }
+
+  async function setCapability(botId: string, capability: string, enabled: boolean): Promise<boolean> {
+    try {
+      await gatewayService.call('setBotCapability', { botId, capability, enabled })
+      return true
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : String(err)
+      return false
+    }
+  }
+
+  return { bots, activeBotId, activeBot, loading, error, load, create, update, remove, selectBot, capabilities, setCapability }
 })

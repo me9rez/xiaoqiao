@@ -4,6 +4,7 @@ import { computed, reactive, ref, watch } from 'vue'
 import { desktopAvailable, pickFolder } from '@/services/desktop'
 import { gatewayService } from '@/services/gateway'
 import { useBotsStore } from '@/stores/bots'
+import type { BotCapability } from '@/types/bot'
 import type { Bot, ToolInfo } from '@/types/bot'
 
 const props = defineProps<{
@@ -29,6 +30,7 @@ const form = reactive({
 })
 
 const tools = ref<ToolInfo[]>([])
+const capabilities = ref<BotCapability[]>([])
 const previewText = ref('')
 const previewing = ref(false)
 
@@ -62,6 +64,18 @@ async function loadTools() {
   }
 }
 
+async function loadCapabilities(botId: string) {
+  capabilities.value = botId ? await botsStore.capabilities(botId) : []
+}
+
+async function toggleCapability(item: BotCapability) {
+  if (!props.bot) return
+  const next = !item.enabled
+  item.enabled = next
+  const ok = await botsStore.setCapability(props.bot.id, item.id, next)
+  if (!ok) item.enabled = !next
+}
+
 function toggleTool(name: string) {
   form.tools = form.tools.includes(name)
     ? form.tools.filter((item) => item !== name)
@@ -80,6 +94,7 @@ function reset(source: Bot | null) {
   formError.value = null
   previewText.value = ''
   void loadTools()
+  void loadCapabilities(source?.id ?? '')
 }
 
 watch(
@@ -258,6 +273,38 @@ function closeOverlay(event: MouseEvent) {
               </button>
             </div>
           </label>
+
+          <div>
+            <span class="block text-[13px] font-[var(--weight-medium)] text-[var(--color-text)] mb-1.5">
+              能力（连接器，按 Bot 开关；改动即时生效）
+            </span>
+            <p v-if="!bot" class="text-[12px] text-[var(--color-text-faint)]">
+              保存后可以按 Bot 开关连接器。
+            </p>
+            <p v-else-if="capabilities.length === 0" class="text-[12px] text-[var(--color-text-faint)]">
+              还没有安装连接器。
+            </p>
+            <div v-else class="max-h-40 overflow-y-auto space-y-1">
+              <label
+                v-for="item in capabilities"
+                :key="item.id"
+                class="flex items-start gap-2 px-2 py-1.5 rounded-[var(--radius-md)] hover:bg-[var(--color-hover)] cursor-pointer"
+              >
+                <input
+                  type="checkbox"
+                  class="mt-0.5 accent-[var(--color-accent)]"
+                  :checked="item.enabled"
+                  @change="toggleCapability(item)"
+                >
+                <span class="min-w-0 flex-1">
+                  <span class="block text-[13px] text-[var(--color-text)]">{{ item.label }}</span>
+                  <span class="block text-[11px] text-[var(--color-text-faint)] truncate">
+                    {{ item.description || item.id }}
+                  </span>
+                </span>
+              </label>
+            </div>
+          </div>
 
           <div>
             <span class="block text-[13px] font-[var(--weight-medium)] text-[var(--color-text)] mb-1.5">

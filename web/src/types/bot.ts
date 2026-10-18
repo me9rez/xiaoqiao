@@ -26,6 +26,16 @@ export interface BotDraft {
   description?: string
 }
 
+export interface BotCapability {
+  /** `mcp:<server>` */
+  id: string
+  kind: string
+  name: string
+  label: string
+  description: string
+  enabled: boolean
+}
+
 export interface ToolInfo {
   name: string
   description: string
