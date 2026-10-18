@@ -8,7 +8,7 @@ import pytest
 
 from xiaoqiao import store
 from xiaoqiao.bots import BotRepository
-from xiaoqiao.groups import DEFAULT_SETTINGS, GroupRepository
+from xiaoqiao.groups import DEFAULT_SETTINGS, GroupRepository, group_to_dict
 
 
 @pytest.fixture
@@ -119,3 +119,39 @@ class TestMembership:
                 "SELECT COUNT(*) AS n FROM group_members WHERE group_id = ?", (group.id,)
             ).fetchone()["n"]
         assert remaining == 0
+
+
+class TestGroupAdmin:
+    """`adminBotId` is the product name for the group's manager (``default_bot_id``)."""
+
+    def test_admin_alias_matches_the_stored_default(self, repos: tuple[BotRepository, GroupRepository]) -> None:
+        bots, groups = repos
+        chief = bots.create("Chief")
+        writer = bots.create("Writer")
+
+        group = groups.create("Team", [chief.id, writer.id], default_bot_id=chief.id)
+
+        assert group.admin_bot_id == chief.id
+        assert group_to_dict(group)["adminBotId"] == chief.id
+        # The legacy key keeps working for older clients.
+        assert group_to_dict(group)["defaultBotId"] == chief.id
+
+    def test_update_accepts_admin_bot_id(self, repos: tuple[BotRepository, GroupRepository]) -> None:
+        bots, groups = repos
+        chief = bots.create("Chief")
+        writer = bots.create("Writer")
+        group = groups.create("Team", [chief.id, writer.id], default_bot_id=chief.id)
+
+        updated = groups.update(group.id, adminBotId=writer.id)
+
+        assert updated is not None
+        assert updated.admin_bot_id == writer.id
+
+    def test_admin_must_be_a_member(self, repos: tuple[BotRepository, GroupRepository]) -> None:
+        bots, groups = repos
+        chief = bots.create("Chief")
+        outsider = bots.create("Outsider")
+        group = groups.create("Team", [chief.id], default_bot_id=chief.id)
+
+        with pytest.raises(ValueError, match="admin bot must be a member"):
+            groups.update(group.id, adminBotId=outsider.id)

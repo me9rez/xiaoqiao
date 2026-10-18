@@ -233,6 +233,17 @@ vitest 102、pytest **282**、`pnpm build-only` 通过。
 
 未做：参考的「缓存命中率」KPI——`UsageTotals` 没有 cache token 字段（M5 补）。
 
+### M5 后端补齐（进行中，2026-10-18）
+
+| 项 | 状态 |
+|---|---|
+| schema 迁移器 | ✅ `store.MIGRATIONS` + `SCHEMA_VERSION = 3`（给 `bots` 加 `role` / `description`），`init_db` 按版本顺序执行、容忍手工加过列；6 项回归测试 |
+| bot 职位/简介 | ✅ 数据类 → 行映射 → 序列化 → `create`/`update` → `createBot`/`updateBot` → TS 类型 → 侧栏副标题与详情抽屉 → Bot 编辑器输入框 |
+| 群管理员 | ✅ 语义本来就在：`resolve_recipients()` 用 `default_bot_id` 决定谁应答并派活。**没有新增列**，而是把它按产品叫法暴露成 `adminBotId`（同一值），`updateGroup` 接受 `adminBotId`，群行副标题显示「管理员 X · 成员」，群内作者徽标改读它。3 项测试 |
+| 未读计数 | ⬜ 未做 |
+| `UsageTotals` 的 cache token | ⬜ 未做（用量页的「缓存命中率」KPI 卡在等它） |
+| 能力 per-bot 启用 + 主 Bot 权限 | ⬜ 未做 |
+
 ---
 
 ## 6. 已知问题

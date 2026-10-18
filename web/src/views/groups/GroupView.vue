@@ -40,7 +40,8 @@ function authorBot(message: GroupMessage): Bot | null {
 
 /** The group's manager bot gets a 管理员 tag next to its name. */
 function authorBadge(message: GroupMessage): string {
-  return group.value?.defaultBotId && message.authorId === group.value.defaultBotId ? '管理员' : ''
+  const admin = group.value?.adminBotId ?? group.value?.defaultBotId
+  return admin && message.authorId === admin ? '管理员' : ''
 }
 
 interface TextSegment {

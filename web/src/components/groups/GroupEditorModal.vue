@@ -157,7 +157,7 @@ function closeOverlay(event: MouseEvent) {
 
           <label class="block">
             <span class="block text-[13px] font-[var(--weight-medium)] text-[var(--color-text)] mb-1.5">
-              默认应答 Bot
+              管理员（默认应答、负责派活）
             </span>
             <select
               v-model="form.defaultBotId"

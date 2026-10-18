@@ -98,7 +98,9 @@ function botSubtitle(bot: Bot): string {
 function groupSubtitle(group: Group): string {
   const names = group.botIds.map(botName)
   if (names.length === 0) return '还没有成员'
-  return names.slice(0, 3).join(' · ') + (names.length > 3 ? ` 等 ${names.length} 个` : '')
+  const admin = group.adminBotId ?? group.defaultBotId
+  const members = names.slice(0, 3).join(' · ') + (names.length > 3 ? ` 等 ${names.length} 个` : '')
+  return admin ? `管理员 ${botName(admin)} · ${members}` : members
 }
 
 function groupActivity(group: Group): BotActivityState {
