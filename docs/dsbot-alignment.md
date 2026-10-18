@@ -175,9 +175,39 @@ Bot 榜（名字 + 职位 + 进度条 + 百分比）→ 模型榜。
 | `ProviderCard.vue` | `providers[id]?.api_key.length > 0` 在 `noUncheckedIndexedAccess` 下可能 undefined |
 | `SettingsModelsView.vue` | 模板里直接索引 `providers[id]`，改为先配对成 `{ id, config }` |
 
+### M2 消息流（2026-10-18）
+
+| 文件 | 改动 |
+|---|---|
+| `web/src/components/chat/MessageItem.vue` | 重写：助手消息改浅灰气泡（`--color-surface`，左上角小圆角），用户消息改深色填充（`--color-send-bg` / `--color-send-icon`）；去掉每条的机器人头像，作者行改为可选 prop（群聊传入）；**思考过程折叠成一行**「▸ 思考过程」，点开才显示全文 |
+| `web/src/views/groups/GroupView.vue` | 去掉与顶部胶囊重复的群头部（群设置改成右上角浮动按钮）；bot 消息加作者行「emoji + 名字 + 管理员 + 时间」；系统事件居中一行；**@ 提及渲染成胶囊**（只对真实成员生效，`@foo` 保持纯文本）；输入框占位改成「给 <群名> 发消息」 |
+
+同时在后端修掉一个会让群聊直接不可用的问题：`_FakeClient.get_response` 是 `async def`，但框架的
+`_agents._call_chat_client()` 在 `stream=True` 时**不 await**，直接对返回值调用 `.map()`——于是无 API key 时
+群聊必然抛 `AttributeError: 'coroutine' object has no attribute 'map'`（之前只在群里触发，因为单聊走另一条路径）。
+现在 `get_response` 是同步方法：流式分支直接返回 `ResponseStream`，非流式分支返回一个 awaitable；
+`test_settings.py` 的用例相应改了断言，并新增一条「非流式返回 awaitable」。
+
+另一个顺带修复：群聊运行结束时若回复为空，网关不会发任何消息，`groupsStore.sending` 会永远为 true（输入框卡在
+「Bot 正在回复…」）。现在 store 同时监听 `done` / `error` 清掉该标志。
+
+已验证：用户气泡、系统事件、顶部胶囊、侧栏行（含状态点）在 Chromium 里逐项核对；`vue-tsc --build` 0 错误、
+vitest 102、pytest **282**、`pnpm build-only` 通过。
+**未验证**：bot 气泡的作者行与 @ 胶囊——本机没有 API key，假客户端的流式文本没有变成回复
+（`turn_end reason=complete` 但 `turn_text` 为空），需要真实模型才能看到；见 §6。
+
 ---
 
-## 6. 不做的部分
+## 6. 已知问题
+
+| 问题 | 影响 | 下一步 |
+|---|---|---|
+| 无 API key 时 `_FakeClient` 的流式文本没有变成回复（`turn_end reason=complete`，`turn_text` 为空） | 本机看不到任何 Bot 回复，群聊里 bot 气泡的作者行 / @ 胶囊也无法目视验证 | 查 `agent_runtime._stream()` 取文本的口径（fake 只用 `Content(type="text")`），或直接用真实 key 验证 |
+| `groupsStore.sending` 依赖 `done` / `error` 兜底 | 多个群/会话同时跑时，任一 `done` 都会清掉标志（可能提前收起「正在回复」） | M5 把 `groupId` 带进 run 事件，按群匹配 |
+
+---
+
+## 7. 不做的部分
 
 | 不做 | 原因 |
 |---|---|

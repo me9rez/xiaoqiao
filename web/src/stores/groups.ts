@@ -129,7 +129,20 @@ export const useGroupsStore = defineStore('groups', () => {
         receive(event.message as GroupMessage)
       }
     })
-    return unsubscribe
+    // A run can end without producing a message at all (empty reply / failure that
+    // the gateway reports only in logs), so the composer must not stay in "sending".
+    const stopOnDone = gatewayService.on('done', () => {
+      sending.value = false
+    })
+    const stopOnError = gatewayService.on('error', () => {
+      sending.value = false
+    })
+    return () => {
+      unsubscribe?.()
+      unsubscribe = null
+      stopOnDone()
+      stopOnError()
+    }
   }
 
   return {

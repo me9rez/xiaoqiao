@@ -356,11 +356,17 @@ class _FakeClient:
     ``additional_properties`` is required by the ``SupportsChatGetResponse``
     protocol; without it the framework treats the client as not tool-capable and
     silently skips the function-invocation loop.
+
+    ``get_response`` is deliberately **not** a coroutine: the framework's
+    ``_call_chat_client`` returns whatever it hands back, so the streaming branch
+    must produce a ``ResponseStream`` immediately (a coroutine has no ``.map()``,
+    which is how group runs used to die with "coroutine object has no attribute
+    'map'") while the non-streaming branch returns an awaitable.
     """
 
     additional_properties: ClassVar[dict[str, Any]] = {}
 
-    async def get_response(
+    def get_response(
         self,
         messages: list[object],
         *,
@@ -391,10 +397,13 @@ class _FakeClient:
 
             return ResponseStream(_stream(), finalizer=_finalizer)
 
-        return ChatResponse(
-            messages=[Message(role="assistant", contents=[Content(type="text", text="Hello from fake client!")])],
-            finish_reason="stop",
-        )
+        async def _respond() -> object:
+            return ChatResponse(
+                messages=[Message(role="assistant", contents=[Content(type="text", text="Hello from fake client!")])],
+                finish_reason="stop",
+            )
+
+        return _respond()
 
 
 __all__ = [

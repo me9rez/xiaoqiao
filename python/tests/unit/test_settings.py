@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable
 from typing import cast
 
 import pytest
@@ -100,7 +101,9 @@ class TestFakeClient:
         from agent_framework._types import Message, ResponseStream
 
         client = _FakeClient()
-        stream = cast(ResponseStream, await client.get_response([Message(role="user", contents=["hi"])], stream=True))
+        # Streaming must hand back the stream itself: the framework does not await
+        # this call (see `_agents._call_chat_client`).
+        stream = cast(ResponseStream, client.get_response([Message(role="user", contents=["hi"])], stream=True))
         chunks = [chunk async for chunk in stream]
         assert any("Hello from fake agent" in str(chunk) for chunk in chunks)
 
@@ -111,3 +114,10 @@ class TestFakeClient:
             for msg in response.messages
             for c in getattr(msg, "contents", [])
         )
+
+    @pytest.mark.asyncio
+    async def test_fake_client_non_streaming_is_awaitable(self) -> None:
+        from agent_framework._types import ChatResponse
+
+        response = await cast(Awaitable[ChatResponse], _FakeClient().get_response([], stream=False))
+        assert response.messages
