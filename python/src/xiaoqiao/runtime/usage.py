@@ -160,6 +160,66 @@ class UsageRepository:
             }
             for row in rows
         ]
+    def by_bot(
+        self,
+        *,
+        since: datetime | None = None,
+        limit: int = 10,
+    ) -> list[dict[str, Any]]:
+        """Token spend per bot, biggest first — the usage page's bot ranking."""
+        query = (
+            "SELECT bot_id, COALESCE(SUM(input_tokens + output_tokens), 0) AS tokens, "
+            "COALESCE(SUM(cost_usd), 0) AS cost, COUNT(*) AS runs FROM usage_events"
+        )
+        clauses: list[str] = []
+        values: list[Any] = []
+        if since is not None:
+            clauses.append("created_at >= ?")
+            values.append(since.astimezone(UTC).isoformat())
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
+        query += " GROUP BY bot_id ORDER BY tokens DESC LIMIT ?"
+        values.append(limit)
+        with self._connect() as conn:
+            rows = conn.execute(query, values).fetchall()
+        return [
+            {
+                "botId": row["bot_id"],
+                "tokens": int(row["tokens"]),
+                "costUsd": float(row["cost"]),
+                "runs": int(row["runs"]),
+            }
+            for row in rows
+        ]
+
+    def by_day(
+        self,
+        *,
+        since: datetime,
+        bot_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Per-day token totals, optionally split per bot, for the stacked chart.
+
+        Dates are the UTC calendar day of ``created_at``; the UI groups them by
+        bot so one bar per day can stack several bots.
+        """
+        query = (
+            "SELECT substr(created_at, 1, 10) AS day, bot_id, "
+            "COALESCE(SUM(input_tokens + output_tokens), 0) AS tokens FROM usage_events"
+        )
+        clauses = ["created_at >= ?"]
+        values: list[Any] = [since.astimezone(UTC).isoformat()]
+        if bot_id is not None:
+            clauses.append("bot_id = ?")
+            values.append(bot_id)
+        query += " WHERE " + " AND ".join(clauses)
+        query += " GROUP BY day, bot_id ORDER BY day ASC"
+        with self._connect() as conn:
+            rows = conn.execute(query, values).fetchall()
+        return [
+            {"date": row["day"], "botId": row["bot_id"], "tokens": int(row["tokens"])}
+            for row in rows
+        ]
 
 
 def budget_exceeded(

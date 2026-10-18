@@ -20,6 +20,8 @@ const formError = ref<string | null>(null)
 const form = reactive({
   name: '',
   emoji: '🤖',
+  role: '',
+  description: '',
   persona: '',
   model: '',
   workspace: '',
@@ -69,6 +71,8 @@ function toggleTool(name: string) {
 function reset(source: Bot | null) {
   form.name = source?.name ?? ''
   form.emoji = source?.emoji ?? '🤖'
+  form.role = source?.role ?? ''
+  form.description = source?.description ?? ''
   form.persona = source?.persona ?? ''
   form.model = source?.model ?? ''
   form.workspace = source?.workspace ?? ''
@@ -97,6 +101,8 @@ async function handleSave() {
     const payload = {
       name: form.name.trim(),
       emoji: form.emoji.trim() || '🤖',
+      role: form.role.trim(),
+      description: form.description.trim(),
       persona: form.persona,
       model: form.model.trim(),
       workspace: form.workspace.trim(),
@@ -182,6 +188,29 @@ function closeOverlay(event: MouseEvent) {
               placeholder="🤖"
             >
           </label>
+
+          <div class="grid grid-cols-[130px_1fr] gap-3">
+            <label class="block">
+              <span class="block text-[13px] font-[var(--weight-medium)] text-[var(--color-text)] mb-1.5">职位</span>
+              <input
+                v-model="form.role"
+                type="text"
+                maxlength="12"
+                class="w-full h-[38px] px-3 rounded-[var(--radius-md)] bg-[var(--color-surface-overlay)] border-0.5 border-[var(--color-line-strong)] text-[14px] text-[var(--color-text)] outline-none focus-visible:shadow-[var(--p-focus-ring)]"
+                placeholder="总管"
+              >
+            </label>
+            <label class="block">
+              <span class="block text-[13px] font-[var(--weight-medium)] text-[var(--color-text)] mb-1.5">一句话介绍</span>
+              <input
+                v-model="form.description"
+                type="text"
+                maxlength="60"
+                class="w-full h-[38px] px-3 rounded-[var(--radius-md)] bg-[var(--color-surface-overlay)] border-0.5 border-[var(--color-line-strong)] text-[14px] text-[var(--color-text)] outline-none focus-visible:shadow-[var(--p-focus-ring)]"
+                placeholder="显示在侧栏名字下面"
+              >
+            </label>
+          </div>
 
           <label class="block">
             <span class="block text-[13px] font-[var(--weight-medium)] text-[var(--color-text)] mb-1.5">人格</span>

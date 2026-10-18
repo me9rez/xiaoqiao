@@ -22,5 +22,20 @@ export interface UsageSummary {
   today: UsageTotals
   window: UsageTotals
   byModel: UsageByModel[]
+  byBot: UsageByBot[]
+  byDay: UsageByDay[]
   budget: UsageBudget
+}
+
+export interface UsageByBot {
+  botId: string
+  tokens: number
+  costUsd: number
+  runs: number
+}
+
+export interface UsageByDay {
+  date: string
+  botId: string
+  tokens: number
 }

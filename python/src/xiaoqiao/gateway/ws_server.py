@@ -911,6 +911,11 @@ class WsGatewayServer:
                                     "runs": window.runs,
                                 },
                                 "byModel": self._usage.by_model(since=since, bot_id=bot_id),
+                                "byBot": [] if bot_id else self._usage.by_bot(since=since),
+                                "byDay": self._usage.by_day(
+                                    since=since or datetime.now(UTC) - timedelta(days=1),
+                                    bot_id=bot_id,
+                                ),
                                 "budget": {
                                     "dailyTokens": self._limits().daily_token_budget,
                                     "dailyUsd": self._limits().daily_budget_usd,
