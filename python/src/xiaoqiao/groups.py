@@ -38,6 +38,15 @@ class Group:
     updated_at: str = ""
     bot_ids: tuple[str, ...] = ()
 
+    @property
+    def admin_bot_id(self) -> str | None:
+        """The group's manager — it answers by default and hands work to others.
+
+        Stored in ``default_bot_id`` since the column predates the admin concept;
+        the wire exposes it as ``adminBotId``.
+        """
+        return self.default_bot_id
+
 
 def _now() -> str:
     return datetime.now(UTC).isoformat()
@@ -55,6 +64,8 @@ def group_to_dict(group: Group) -> dict[str, Any]:
         "id": group.id,
         "name": group.name,
         "defaultBotId": group.default_bot_id,
+        # Same value under the name the product uses: the group's manager.
+        "adminBotId": group.admin_bot_id,
         "botIds": list(group.bot_ids),
         "settings": group.settings,
         "archived": group.archived,
@@ -170,14 +181,14 @@ class GroupRepository:
                 raise ValueError("group name must not be empty")
             updates.append("name = ?")
             values.append(name)
-        if "defaultBotId" in changes or "default_bot_id" in changes:
-            default = changes.get("defaultBotId", changes.get("default_bot_id"))
-            if default is not None:
+        if "adminBotId" in changes or "defaultBotId" in changes or "default_bot_id" in changes:
+            admin = changes.get("adminBotId", changes.get("defaultBotId", changes.get("default_bot_id")))
+            if admin is not None:
                 with self._connect() as conn:
-                    if default not in self._bot_ids(conn, group_id):
-                        raise ValueError("default bot must be a member of the group")
+                    if admin not in self._bot_ids(conn, group_id):
+                        raise ValueError("admin bot must be a member of the group")
             updates.append("default_bot_id = ?")
-            values.append(default)
+            values.append(admin)
         if "settings" in changes:
             updates.append("settings_json = ?")
             values.append(json.dumps(dict(changes["settings"] or {}), ensure_ascii=False))
