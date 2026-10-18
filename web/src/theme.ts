@@ -5,6 +5,8 @@
  * to avoid a flash; keep the storage keys in sync with that script.
  */
 
+import { desktopAvailable, getSystemTheme, onSystemTheme } from './services/desktop'
+
 export type ColorScheme = 'light' | 'dark' | 'system'
 export type FontScale = 'small' | 'medium' | 'large' | 'xlarge'
 
@@ -13,6 +15,9 @@ const LEGACY_PREFIX = 'coding-agent:'
 
 export const COLOR_SCHEME_KEY = `${KEY_PREFIX}color-scheme`
 export const FONT_SCALE_KEY = `${KEY_PREFIX}font-scale`
+
+/** OS appearance reported by the desktop shell; null means "ask matchMedia". */
+let systemDark: boolean | null = null
 
 const darkQuery = () => window.matchMedia('(prefers-color-scheme: dark)')
 
@@ -58,6 +63,8 @@ export function getFontScale(): FontScale {
 
 function resolve(scheme: ColorScheme): 'light' | 'dark' {
   if (scheme === 'system') {
+    // The desktop shell knows the real OS appearance; matchMedia is the fallback.
+    if (systemDark !== null) return systemDark ? 'dark' : 'light'
     return darkQuery().matches ? 'dark' : 'light'
   }
   return scheme
@@ -96,4 +103,23 @@ export function initTheme(): void {
     }
   }
   media.addEventListener('change', onChange)
+
+  void adoptDesktopTheme()
+}
+
+/**
+ * In the desktop shell, ask the launcher for the OS appearance and follow it.
+ * matchMedia inside a WebView is not always in sync with the real system theme.
+ */
+async function adoptDesktopTheme(): Promise<void> {
+  if (!desktopAvailable()) return
+  const dark = await getSystemTheme()
+  if (dark !== null) {
+    systemDark = dark
+    if (getColorScheme() === 'system') applyColorScheme('system')
+  }
+  onSystemTheme((value) => {
+    systemDark = value
+    if (getColorScheme() === 'system') applyColorScheme('system')
+  })
 }

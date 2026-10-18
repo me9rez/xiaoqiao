@@ -67,9 +67,20 @@ tinyjs build          # 产物在 desktop/dist/
 
 ## 已知缺口（按 `docs/desktop-plan.md` 的里程碑排期）
 
-- M3：原生菜单、审批通知、文件夹选择、拖放、主题同步、中文输入法人工验收
 - M4：PyInstaller sidecar（`executables/`）、安装包、自动更新
+- 中文输入法（IME）人工验收
 - 图标目前是 64×64 放大到 1024×1024，正式发布前需要重绘
+
+## 原生集成（M3）
+
+| 能力 | 入口 | 说明 |
+|---|---|---|
+| 应用菜单 | `tiny.menu.set([...])` | **菜单在 `tiny.menu`，不在 `tiny.app.menu`**（后者是 `undefined`，写错是静默空操作） |
+| 菜单点击 | `tiny.menu.on(id)` | id：`new-session` / `open-settings` / `open-data-dir` / `reload` / `toggle-theme` / `quit` |
+| 通知 | `tiny.notify(...)` | 只在窗口失焦时弹；审批按 approvalId 去重 |
+| 拖放 | `tiny.win.onDrop(paths)` | 真实路径经 `services/composer.ts` 追加到输入框 |
+| 选目录 | `tiny.dialog.pickFolder()` | Bot 编辑器的「选择…」，仅桌面模式显示 |
+| 主题 | `tiny.theme.get()/on()` | 仅当偏好为 `system` 时覆盖 `matchMedia` |
 
 ## 排错
 

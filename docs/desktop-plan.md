@@ -534,9 +534,25 @@ R8 需要单独强调：目前 `agent.db` 是单进程假设，桌面版让「CL
 - `tinyjs build` 报 `EEXIST: file already exists` 的根因是**上一次运行的 exe 还活着**锁住了 `dist/`，先 `Stop-Process` 再构建。
 - PowerShell 的 `CloseMainWindow()` 对 tinyjs 窗口返回 False（拿不到主窗口句柄），关窗行为只能人工验收或在 dev 日志里确认 `setHideOnClose` 没抛错。
 
-### 12.5 仍未做
+### 12.5 M3 已完成（原生集成）
 
-- M3：原生菜单、审批通知、文件夹选择、拖放、主题同步、IME 人工验收
+| 项 | 做法 | 证据 |
+|---|---|---|
+| 原生菜单 | 页面侧 `tiny.menu.set([...])`：文件（新建会话 ⌘N / 设置 ⌘, / 打开数据目录 / 退出 ⌘Q）、编辑（`role: 'edit'` 标准项）、视图（重新加载 / 切换深浅色） | 探针 `tiny.menu.get('new-session')` → `{exists:true,label:'新建会话'}`，三个 id 均存在 |
+| 菜单动作 | `tiny.menu.on(id)` → 路由跳转 / `openDataDir` / `location.reload()` / 主题切换 / `tiny.quit()` | 单测覆盖 settings 与 new-session 两个跳转 |
+| 通知 | 只在 `document.hidden` 时弹：`approval_requested` → 「需要审批 · <工具>」、`done` → 「任务完成」；同一 approvalId 去重 | 单测：可见时不弹、隐藏时弹一次、重复事件不再弹 |
+| 拖放 | `tiny.win.onDrop(paths)` → `composer` 事件总线 → 输入框追加真实路径并聚焦 | 单测：两条路径合并为多行文本进 composer |
+| 文件夹选择 | Bot 编辑器工作目录旁的「选择…」，仅 `desktopAvailable()` 时渲染，走 `tiny.dialog.pickFolder()` | 代码路径 + 类型检查；浏览器模式按钮不出现 |
+| 主题同步 | `tiny.theme.get()/on()` 覆盖 `matchMedia`，只在偏好为 `system` 时生效 | 探针 `tiny.theme.get()` → `{dark:false}`，`data-color-scheme` 已按此渲染 |
+
+踩坑记录：
+
+- **菜单在 `tiny.menu`，不在 `tiny.app.menu`**。`tiny.app` 存在但 `tiny.app.menu` 是 `undefined`，写成后者是静默空操作（第一次探针就抓到 `exists:false`）。
+- 探针脚本走 `tinyjs.json` 的 `inject`，跑完必须删掉，否则每次启动都会 `tiny.quit()`。
+
+### 12.6 仍未做
+
 - M4：PyInstaller sidecar（现在打包版仍靠本机 `uv` 找引擎，只在开发机成立）、安装包、自更新
+- 中文输入法（IME）人工验收——自动化测不了
 - 图标仍是 64×64 放大到 1024×1024，正式发布前需重绘
 

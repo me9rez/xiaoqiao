@@ -12,6 +12,7 @@ import { createPinia } from 'pinia'
 
 import App from './App.vue'
 import router from './router'
+import { setupDesktopShell } from './services/desktopShell'
 import { useBootStore } from './stores/boot'
 import { useChatStore } from './stores/chat'
 import { useWorkspaceStore } from './stores/workspace'
@@ -33,6 +34,9 @@ workspaceStore.setupEventListeners()
 const bootStore = useBootStore()
 
 app.mount('#app')
+
+// Native menu, drag & drop and notifications. A no-op in a browser.
+setupDesktopShell(router)
 
 // Mount first so the window paints immediately. In a browser this connects in
 // the same tick; in the desktop shell it waits for the engine and shows the

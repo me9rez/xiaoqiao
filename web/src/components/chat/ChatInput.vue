@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Plus, Send, Square } from '@lucide/vue'
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { onComposerInsert } from '@/services/composer'
 import { gatewayService } from '@/services/gateway'
 import { useChatStore } from '@/stores/chat'
 import type { ProviderConfig, Settings } from '@/types/session'
@@ -23,6 +24,7 @@ const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const settings = ref<Settings | null>(null)
 
 let unsubscribeOpen: (() => void) | null = null
+let unsubscribeComposer: (() => void) | null = null
 
 const modelOptions = computed(() => {
   const opts: { value: string; label: string; providerId: string; providerName: string; modelId: string }[] = []
@@ -119,10 +121,17 @@ onMounted(() => {
     loadSettings()
   })
   loadSettings()
+  // Files dragged onto the desktop window land here as real paths.
+  unsubscribeComposer = onComposerInsert((inserted) => {
+    text.value = text.value ? `${text.value}\n${inserted}` : inserted
+    nextTick(adjustHeight)
+    nextTick(() => textareaRef.value?.focus())
+  })
 })
 
 onUnmounted(() => {
   unsubscribeOpen?.()
+  unsubscribeComposer?.()
 })
 </script>
 

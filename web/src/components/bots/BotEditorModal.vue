@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 
+import { desktopAvailable, pickFolder } from '@/services/desktop'
 import { gatewayService } from '@/services/gateway'
 import { useBotsStore } from '@/stores/bots'
 import type { Bot, ToolInfo } from '@/types/bot'
@@ -28,6 +29,14 @@ const form = reactive({
 const tools = ref<ToolInfo[]>([])
 const previewText = ref('')
 const previewing = ref(false)
+
+/** The native folder picker only exists in the desktop shell. */
+const canPickFolder = computed(() => desktopAvailable())
+
+async function chooseWorkspace(): Promise<void> {
+  const picked = await pickFolder()
+  if (picked) form.workspace = picked
+}
 
 async function loadPreview() {
   if (!props.bot) return
@@ -203,12 +212,22 @@ function closeOverlay(event: MouseEvent) {
             <span class="block text-[13px] font-[var(--weight-medium)] text-[var(--color-text)] mb-1.5">
               工作目录（留空用当前目录）
             </span>
-            <input
-              v-model="form.workspace"
-              type="text"
-              class="w-full h-[38px] px-3 rounded-[var(--radius-md)] bg-[var(--color-surface-overlay)] border-0.5 border-[var(--color-line-strong)] text-[14px] text-[var(--color-text)] outline-none focus-visible:shadow-[var(--p-focus-ring)]"
-              placeholder="D:\workspace\project"
-            >
+            <div class="flex gap-2">
+              <input
+                v-model="form.workspace"
+                type="text"
+                class="w-full h-[38px] px-3 rounded-[var(--radius-md)] bg-[var(--color-surface-overlay)] border-0.5 border-[var(--color-line-strong)] text-[14px] text-[var(--color-text)] outline-none focus-visible:shadow-[var(--p-focus-ring)]"
+                placeholder="D:\workspace\project"
+              >
+              <button
+                v-if="canPickFolder"
+                type="button"
+                class="shrink-0 h-[38px] px-3 rounded-[var(--radius-md)] border-0.5 border-[var(--color-line-strong)] bg-[var(--color-surface-overlay)] text-[13px] text-[var(--color-text)] hover:bg-[var(--color-surface-hover)]"
+                @click="chooseWorkspace"
+              >
+                选择…
+              </button>
+            </div>
           </label>
 
           <div>
