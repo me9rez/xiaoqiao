@@ -3,7 +3,6 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { RouterView, useRoute } from 'vue-router'
 
 import BotEditorModal from '@/components/bots/BotEditorModal.vue'
-import BotRail from '@/components/bots/BotRail.vue'
 import ChatHeader from '@/components/chat/ChatHeader.vue'
 import ContextPanel from '@/components/chat/ContextPanel.vue'
 import Sidebar from '@/components/chat/Sidebar.vue'
@@ -92,9 +91,10 @@ const keepAliveKey = computed(() => {
 
 <template>
   <div class="h-full flex bg-[var(--color-bg)] text-[var(--color-text)]">
-    <BotRail @edit="openEditor" />
-
-    <Sidebar class="w-[var(--p-sidebar-w)] flex-shrink-0 border-r border-[var(--color-line)] bg-[var(--color-sidebar-bg)]" />
+    <Sidebar
+      class="w-[var(--p-sidebar-w)] flex-shrink-0 border-r border-[var(--color-line)]"
+      @edit-bot="openEditor"
+    />
 
     <main class="flex-1 flex flex-col min-w-0 bg-[var(--color-bg)]">
       <ChatHeader />

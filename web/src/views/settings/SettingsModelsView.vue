@@ -41,6 +41,14 @@ const webSearchReady = computed(() => {
   return service.provider === 'searxng' ? Boolean(service.base_url) : Boolean(service.api_key)
 })
 
+/** Ids paired with their config, so the template never indexes into a maybe-missing entry. */
+const providerEntries = computed(() =>
+  store.providerIds.flatMap((id) => {
+    const config = store.settings.providers[id]
+    return config ? [{ id, config }] : []
+  }),
+)
+
 const fakeClient = computed(() => store.status?.client === 'fake')
 
 function addProvider() {
@@ -176,12 +184,12 @@ onMounted(() => {
       <!-- AI 服务 -->
       <div class="space-y-4">
         <ProviderCard
-          v-for="id in store.providerIds"
-          :key="id"
-          :provider-id="id"
-          :provider="store.settings.providers[id]"
+          v-for="entry in providerEntries"
+          :key="entry.id"
+          :provider-id="entry.id"
+          :provider="entry.config"
         />
-        <p v-if="store.providerIds.length === 0" :class="CARD_CLASS" class="p-5 text-[13px] text-[var(--color-text-faint)]">
+        <p v-if="providerEntries.length === 0" :class="CARD_CLASS" class="p-5 text-[13px] text-[var(--color-text-faint)]">
           还没有 AI 服务。点右上角「添加 AI 服务」开始。
         </p>
       </div>

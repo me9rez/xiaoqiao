@@ -41,7 +41,7 @@ const TYPES = [
 const models = computed(() => store.modelsFor(props.providerId))
 const status = computed(() => store.providerStatus(props.providerId))
 const probe = computed(() => store.probes[props.providerId])
-const hasKey = computed(() => store.settings.providers[props.providerId]?.api_key.length > 0)
+const hasKey = computed(() => (store.settings.providers[props.providerId]?.api_key ?? '').length > 0)
 
 const sourceText = computed(() => {
   const current = status.value

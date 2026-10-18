@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { gatewayService } from '@/services/gateway'
 import { useBotsStore } from '@/stores/bots'
-import type { MessageContent, UiMessage } from '@/types/session'
+import type { Message, MessageContent, UiMessage } from '@/types/session'
 import {
   isDoneEvent,
   isErrorEvent,
@@ -113,7 +113,7 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  function loadSession(session: { id: string; messages: MessageContent[] }) {
+  function loadSession(session: { id: string; messages: Message[] }) {
     const sessionData = getOrCreateSession(session.id)
     if (!sessionData.loaded) {
       sessionData.messages = convertBackendMessages(session.messages)

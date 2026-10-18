@@ -181,4 +181,19 @@ esources/python，wheel 装进它自己的 site-packages；打包版引擎来自
 未做（方案 §12 明示）：Kimi 的 `managed:` 供应商 / OAuth / `secondary_model` / `hooks` / `background` /
 `database` / `watch` / `tui.toml` / 项目级 `local.toml`；`anthropic` 客户端分派留作后续。
 
+## 向 DeepSeek Bot 对齐（2026-10-18，M1）
+
+方案与逐项对照见 [dsbot-alignment.md](dsbot-alignment.md)（参考 <https://github.com/Fei2411/DeepSeek-Bot>）。
+
+| 项 | 状态 |
+|---|---|
+| 侧栏 | ✅ 单栏接管原有 64px Bot 轨道：品牌行（搜索 / 新建 / `⋯`）+ 主 Bot 卡片 + 群与 Bot 同列（emoji、名字、一句话副标题、状态点）+ 可折叠最近对话 + 底部「已连接引擎 · 设置」 |
+| 顶部 | ✅ 通栏标题改为居中悬浮胶囊（emoji/成员堆叠 + 名字 + 状态点，非首页多一个 `←`） |
+| 导航 | ✅ 工具箱 / 定时任务 / 运行记录 / 审批 从顶级项收进 `⋯` 菜单（路由不变） |
+| 顺带修复 | ✅ 删除 `BotRail.vue`——它的 `handleSelect` 引用了未导入的 `sessionsStore`，点第二个 Bot 会抛 ReferenceError |
+| type-check | ✅ `pnpm type-check` 由 `vue-tsc --noEmit`（根 tsconfig 只有 references，**实际什么都没检查**）改为 `vue-tsc --build`；随之暴露并修掉 8 个真实类型错误 |
+| 回归 | ✅ `vue-tsc --build` 0 错误、vitest **102**、`pnpm build-only` 通过、Chromium 截图核对 |
+
+后续里程碑（M2 消息流 / M3 bot 详情抽屉 / M4 设置与用量 / M5 后端补齐 / M6 能力与交接）见方案 §4。
+
 

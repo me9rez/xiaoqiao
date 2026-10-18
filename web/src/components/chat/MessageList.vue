@@ -8,7 +8,9 @@ import type { DynamicScrollerExposed } from 'vue-virtual-scroller'
 import type { UiMessage } from '@/types/session'
 
 const chatStore = useChatStore()
-const scrollerRef = ref<DynamicScrollerExposed<UiMessage> | null>(null)
+/** `DynamicScrollerExposed` omits `$el`, but the component instance does have one. */
+type ScrollerInstance = DynamicScrollerExposed<UiMessage> & { $el: HTMLElement }
+const scrollerRef = ref<ScrollerInstance | null>(null)
 const showScrollBtn = ref(false)
 
 function scrollToBottom(smooth = false) {
