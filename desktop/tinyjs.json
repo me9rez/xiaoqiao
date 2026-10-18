@@ -1,0 +1,17 @@
+{
+  "$schema": "https://tinyjs.app/schema/tinyjs.schema.json",
+  "name": "xiaoqiao",
+  "title": "小巧",
+  "id": "app.xiaoqiao.desktop",
+  "version": "0.1.0",
+  "size": "1280x820",
+  "minTinyjsVersion": "0.57.7",
+  "backend": "src/backend/main.js",
+  "frontend": {
+    "build": "pnpm -C ../web exec vite build --mode desktop --outDir ../desktop/.build/frontend --emptyOutDir",
+    "dist": ".build/frontend",
+    "dev": "pnpm -C ../web exec vite --host 127.0.0.1 --port 5173 --strictPort",
+    "devUrl": "http://127.0.0.1:5173"
+  },
+  "debug": true
+}

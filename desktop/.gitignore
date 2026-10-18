@@ -1,0 +1,4 @@
+.build/
+executables/
+dist/
+node_modules/

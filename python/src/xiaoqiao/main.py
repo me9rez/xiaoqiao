@@ -11,8 +11,10 @@ import argparse
 import asyncio
 import json
 import logging
+import os
 import subprocess
 import sys
+import threading
 from importlib import resources
 from pathlib import Path
 
@@ -55,6 +57,21 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--base-url", default=None, help="Override base URL (default: settings.json)")
     parser.add_argument("--thinking-level", default=None, help="Thinking level: off/low/medium/high")
     parser.add_argument("--ws-port", type=int, default=None, help="WebSocket port (WS mode instead of stdio)")
+    parser.add_argument(
+        "--desktop",
+        action="store_true",
+        help="Desktop-shell mode: WebSocket only, no static server, no port freeing",
+    )
+    parser.add_argument(
+        "--auth-token",
+        default=None,
+        help="Require this token as the first handshake message (default: env XIAOQIAO_TOKEN)",
+    )
+    parser.add_argument(
+        "--exit-on-stdin-eof",
+        action="store_true",
+        help="Exit when the parent closes stdin; the desktop shell keeps it open for its lifetime",
+    )
     parser.add_argument("--web", action="store_true", help="Serve the web frontend static files")
     parser.add_argument("--web-port", type=int, default=8766, help="HTTP port for the web static server")
     parser.add_argument("--web-root", default=_default_web_root(), help="Directory to serve as the web frontend")
@@ -229,7 +246,38 @@ class _StreamToLogger:
         pass
 
 
-async def _async_main(settings: Settings, ws_port: int | None = None) -> None:
+def _watch_stdin_eof(server: object) -> None:
+    """Stop the engine when the parent closes our stdin.
+
+    The desktop shell holds the child's stdin open for its whole lifetime, so
+    EOF is a portable "parent is gone" signal — no pid polling, no orphans.
+    """
+    stream = sys.stdin
+    if stream is None:
+        return
+
+    def _run() -> None:
+        try:
+            while stream.read(1):
+                pass
+        except Exception:
+            pass
+        stop = getattr(server, "request_stop", None)
+        if callable(stop):
+            try:
+                stop()
+            except Exception:
+                logger.warning("Could not stop the gateway on stdin EOF", exc_info=True)
+
+    threading.Thread(target=_run, name="stdin-eof-watch", daemon=True).start()
+
+
+async def _async_main(
+    settings: Settings,
+    ws_port: int | None = None,
+    auth_token: str | None = None,
+    exit_on_stdin_eof: bool = False,
+) -> None:
     loop = asyncio.get_running_loop()
     orig_handler = loop.get_exception_handler()
 
@@ -253,7 +301,7 @@ async def _async_main(settings: Settings, ws_port: int | None = None) -> None:
     skill_provider = create_skills_provider()
     mcp_tools = create_mcp_tools(settings)
 
-    if ws_port:
+    if ws_port is not None:
         from xiaoqiao.gateway.ws_server import WsGatewayServer
 
         server = WsGatewayServer(
@@ -262,7 +310,10 @@ async def _async_main(settings: Settings, ws_port: int | None = None) -> None:
             port=ws_port,
             skill_provider=skill_provider,
             mcp_tools=mcp_tools,
+            auth_token=auth_token,
         )
+        if exit_on_stdin_eof:
+            _watch_stdin_eof(server)
         await server.run_forever()
     else:
         from xiaoqiao.gateway.server import GatewayServer
@@ -293,6 +344,26 @@ def main() -> None:
         asyncio.run(_run_test_mode(prompt, settings))
         return
 
+    token = args.auth_token or os.environ.get("XIAOQIAO_TOKEN") or None
+
+    # Desktop shell: the window loads the built frontend from disk, so the
+    # engine only exposes the WebSocket gateway. No static server, and never
+    # touch other processes' ports (kill-on-conflict is a dev convenience only).
+    if args.desktop:
+        desktop_port = 0 if args.ws_port is None else args.ws_port
+        try:
+            asyncio.run(
+                _async_main(
+                    settings,
+                    ws_port=desktop_port,
+                    auth_token=token,
+                    exit_on_stdin_eof=args.exit_on_stdin_eof,
+                )
+            )
+        except KeyboardInterrupt:
+            pass
+        return
+
     if args.web:
         ws_port = args.ws_port or 8765
         _free_port(args.web_port)
@@ -309,15 +380,15 @@ def main() -> None:
             print(f"Error: cannot start static server: {exc}", file=sys.stderr)
             sys.exit(1)
         try:
-            asyncio.run(_async_main(settings, ws_port=ws_port))
+            asyncio.run(_async_main(settings, ws_port=ws_port, auth_token=token))
         except KeyboardInterrupt:
             pass
         return
 
-    if args.ws_port:
+    if args.ws_port is not None:
         _free_port(args.ws_port)
         try:
-            asyncio.run(_async_main(settings, ws_port=args.ws_port))
+            asyncio.run(_async_main(settings, ws_port=args.ws_port, auth_token=token))
         except KeyboardInterrupt:
             pass
         return

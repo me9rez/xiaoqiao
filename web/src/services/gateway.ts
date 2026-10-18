@@ -2,7 +2,8 @@ import type { AgentEvent, GatewayEvent, GatewayRequest } from '@/types/gateway'
 import { isRpcResponseEvent } from '@/types/gateway'
 import { generateId } from '@/utils/uid'
 
-const DEFAULT_WS_URL = 'ws://127.0.0.1:8765'
+import { DEFAULT_WS_URL, type GatewayEndpoint } from './endpoint'
+
 const MAX_RECONNECT_ATTEMPTS = 5
 const INITIAL_RECONNECT_DELAY_MS = 1000
 const RPC_TIMEOUT_MS = 5000
@@ -18,6 +19,8 @@ interface PendingRpcCall {
 export class GatewayService {
   private ws: WebSocket | null = null
   private url: string
+  private token: string | null = null
+  private handshaking = false
   private listeners: Map<string, EventCallback[]> = new Map()
   private reconnectAttempts = 0
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
@@ -29,19 +32,27 @@ export class GatewayService {
     this.url = url ?? DEFAULT_WS_URL
   }
 
-  connect(): void {
+  /**
+   * Open the connection.
+   *
+   * @param endpoint Optional resolved endpoint (desktop shells hand out an
+   *   OS-assigned port plus a handshake token). Without one the constructor
+   *   URL is used, which is the browser `--web` path.
+   */
+  connect(endpoint?: GatewayEndpoint): void {
     if (this.ws?.readyState === WebSocket.CONNECTING || this.ws?.readyState === WebSocket.OPEN) {
       return
     }
 
+    if (endpoint?.url) this.url = endpoint.url
+    this.token = endpoint?.token ?? null
     this.closedIntentionally = false
     const ws = new WebSocket(this.url)
     this.ws = ws
 
     ws.onopen = () => {
       this.reconnectAttempts = 0
-      this.flushMessageQueue()
-      this.emit('open', { type: 'open' })
+      void this.finishHandshake()
     }
 
     ws.onmessage = (msg: MessageEvent) => {
@@ -65,6 +76,31 @@ export class GatewayService {
     ws.onerror = () => {
       // WebSocket errors are also followed by onclose
     }
+  }
+
+  /**
+   * Desktop shells require a token before any method is allowed, so resolve
+   * the handshake first: `open` then means "the gateway will answer my calls".
+   */
+  private async finishHandshake(): Promise<void> {
+    if (this.token) {
+      // ``call`` sends its frame synchronously, so start it before flipping the
+      // gate: everything the UI sends from now on waits for the acknowledgement.
+      const authCall = this.call('auth', { token: this.token })
+      this.handshaking = true
+      try {
+        await authCall
+      } catch {
+        this.handshaking = false
+        this.closedIntentionally = true
+        this.emit('auth_failed', { type: 'auth_failed' } as unknown as GatewayEvent)
+        this.ws?.close()
+        return
+      }
+      this.handshaking = false
+    }
+    this.flushMessageQueue()
+    this.emit('open', { type: 'open' })
   }
 
   private flushMessageQueue(): void {
@@ -129,6 +165,12 @@ export class GatewayService {
   }
 
   send(rawMessage: string): void {
+    // During the desktop handshake the engine rejects anything but `auth`, so
+    // hold outgoing frames until the token is acknowledged.
+    if (this.handshaking) {
+      this.messageQueue.push(rawMessage)
+      return
+    }
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(rawMessage)
     } else {

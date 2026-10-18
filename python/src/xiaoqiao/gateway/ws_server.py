@@ -7,6 +7,7 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+import hmac
 import json
 import logging
 import sys
@@ -232,27 +233,33 @@ class WsGatewayServer:
         port: int = 8765,
         skill_provider: Any | None = None,
         mcp_tools: list[Any] | None = None,
+        auth_token: str | None = None,
+        db_path: str | Path | None = None,
     ) -> None:
         self._tools = tools or []
         self._settings = settings
         self._host = host
         self._port = port
+        self._auth_token = auth_token
+        self._db_path = db_path
+        self._stop_event = asyncio.Event()
+        self._loop: asyncio.AbstractEventLoop | None = None
         self._skill_provider = skill_provider
         self._mcp_tools = mcp_tools or []
         self._current_tasks: dict[str, asyncio.Task[None]] = {}
-        self._bots = BotRepository()
-        self._groups = GroupRepository()
-        self._group_messages = GroupMessageRepository()
-        self._sessions_db = SessionRepository()
-        self._approvals = ApprovalBroker()
-        self._routines = RoutineRepository()
+        self._bots = BotRepository(db_path)
+        self._groups = GroupRepository(db_path)
+        self._group_messages = GroupMessageRepository(db_path)
+        self._sessions_db = SessionRepository(db_path)
+        self._approvals = ApprovalBroker(db_path)
+        self._routines = RoutineRepository(db_path)
         self._scheduler = Scheduler(self._routines, self._fire_routine)
-        self._memory = MemoryRepository()
-        self._artifacts = ArtifactRepository()
-        self._channels = ChannelRepository()
+        self._memory = MemoryRepository(db_path)
+        self._artifacts = ArtifactRepository(db_path)
+        self._channels = ChannelRepository(db_path)
         self._adapters: dict[str, TelegramAdapter] = {}
-        self._runs = RunRepository()
-        self._usage = UsageRepository()
+        self._runs = RunRepository(db_path)
+        self._usage = UsageRepository(db_path)
         self._rate_window: dict[str, list[float]] = {}
         self._session: Any = None
         self._ws: ServerConnection | None = None
@@ -344,12 +351,25 @@ class WsGatewayServer:
         except Exception:
             pass
 
+    async def _send_ready(self, ws: ServerConnection) -> None:
+        """Announce the gateway is usable; only sent once a connection is allowed."""
+        await ws.send(json.dumps({"type": "ready", "workspace": self._workspace}))
+
+    def _token_ok(self, candidate: Any) -> bool:
+        """Constant-time check of the handshake token (desktop mode)."""
+        expected = self._auth_token or ""
+        if not expected:
+            return False
+        return hmac.compare_digest(str(candidate or ""), expected)
+
     async def _handle_ws(self, ws: ServerConnection) -> None:
         self._ws = ws
         self._connections.add(ws)
         logger.info("Client connected from %s", ws.remote_address)
+        authed = self._auth_token is None
         try:
-            await ws.send(json.dumps({"type": "ready", "workspace": self._workspace}))
+            if authed:
+                await self._send_ready(ws)
 
             async for raw in ws:
                 try:
@@ -361,6 +381,30 @@ class WsGatewayServer:
                 method = request.get("method")
                 params = request.get("params", {})
                 request_id = request.get("id")
+
+                if not authed:
+                    if method == "auth" and self._token_ok(params.get("token")):
+                        authed = True
+                        logger.info("Client authenticated")
+                        # Await these sends directly: ``_send_rpc_response`` schedules a
+                        # task, so the page could otherwise see ``ready`` before the ack.
+                        await ws.send(json.dumps({"type": "rpc_response", "id": request_id, "result": {"ok": True}}))
+                        await self._send_ready(ws)
+                    else:
+                        logger.warning("Rejected unauthenticated client")
+                        await ws.send(
+                            json.dumps(
+                                {
+                                    "type": "rpc_response",
+                                    "id": request_id,
+                                    "error": {"message": "unauthorized"},
+                                }
+                            )
+                        )
+                        await ws.close(code=4401, reason="unauthorized")
+                        return
+                    continue
+
                 if method == "prompt":
                     text = params.get("text", "")
                     session_id = params.get("sessionId", "")
@@ -385,6 +429,12 @@ class WsGatewayServer:
                         task = self._current_tasks[session_id]
                         if not task.done():
                             task.cancel()
+                elif method == "shutdown":
+                    # Desktop shell asks the engine to stop; the process exits
+                    # once run_forever returns.
+                    logger.info("Shutdown requested by client")
+                    self._send_rpc_response(request_id, {"ok": True})
+                    self._stop_event.set()
                 elif method == "listSessions":
                     try:
                         sessions = list_sessions()
@@ -1423,6 +1473,14 @@ class WsGatewayServer:
             started += 1
         logger.info("Started %d channel adapter(s)", started)
 
+    async def _stop_channels(self) -> None:
+        for adapter in list(self._adapters.values()):
+            try:
+                await adapter.stop()
+            except Exception:
+                logger.exception("Failed to stop channel adapter")
+        self._adapters.clear()
+
     def _telegram_for_group(self, group_id: str) -> tuple[Any, TelegramAdapter] | None:
         for channel in self._channels.list(enabled_only=True):
             if channel.kind != "telegram":
@@ -1820,14 +1878,44 @@ class WsGatewayServer:
         if hasattr(session, "messages"):
             save_session(session)
 
+    @property
+    def port(self) -> int:
+        """The port actually bound; 0 until ``run_forever`` gets one from the OS."""
+        return self._port
+
+    def request_stop(self) -> None:
+        """Ask ``run_forever`` to return. Safe to call from another thread."""
+        loop = self._loop
+        if loop is not None and loop.is_running():
+            loop.call_soon_threadsafe(self._stop_event.set)
+        else:
+            self._stop_event.set()
+
     async def run_forever(self) -> None:
         from xiaoqiao.system_prompt import discover_project_context
 
+        self._loop = asyncio.get_running_loop()
         ctx = discover_project_context()
         logger.info("WS gateway starting — OS: %s, shell: %s", ctx.os_name, ctx.shell)
         await self._scheduler.start()
         await self._start_channels()
-        async with serve(self._handle_ws, self._host, self._port):
+        async with serve(self._handle_ws, self._host, self._port) as server:
+            # ``--ws-port 0`` lets the OS pick; report the port we actually got
+            # so the desktop shell can hand it to the page.
+            self._port = _bound_port(server, self._port)
             logger.info("WS gateway on ws://%s:%d", self._host, self._port)
             print(f"WS READY ws://{self._host}:{self._port}", file=sys.stderr, flush=True)
-            await asyncio.get_running_loop().create_future()
+            await self._stop_event.wait()
+        logger.info("WS gateway stopped")
+        await self._scheduler.stop()
+        await self._stop_channels()
+
+
+def _bound_port(server: Any, fallback: int) -> int:
+    """Return the port a ``websockets`` server actually bound (0 means "OS picks")."""
+    for sock in getattr(server, "sockets", None) or []:
+        try:
+            return int(sock.getsockname()[1])
+        except Exception:
+            continue
+    return fallback
