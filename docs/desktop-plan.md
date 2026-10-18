@@ -516,10 +516,27 @@ R8 需要单独强调：目前 `agent.db` 是单进程假设，桌面版让「CL
 4. **`--ws-port 0` 原本是坏的**：`main.py` 里 `if args.ws_port:` 把 `0` 当假值，会掉进 stdio 模式。已改成 `is not None`。
 5. **`WsGatewayServer` 新增 `db_path` 参数**：测试需要（不碰真实库），也顺带为 R8 的多实例方案留了口子。
 
-### 12.4 M1 之后仍未做
+### 12.4 M2 已完成（稳定性）
 
-- M2：托盘常驻、单实例、启动画面、错误横幅、日志文件（`engine.log` 已写但未验证格式）、IME 人工验收、R8 并发写库
-- M3：原生菜单、审批通知、文件夹选择、拖放、主题同步
+| 项 | 做法 | 证据 |
+|---|---|---|
+| 启动画面 | `stores/boot.ts` + `components/BootOverlay.vue`：挂载后立刻绘制，等 `api.gateway()` 与握手完成才撤掉 | 桌面模式下首屏不再空白；浏览器模式一帧内就是 ready |
+| 错误横幅 | 引擎起不来时显示原因 + 最近 14 行引擎日志，带「重试 / 查看日志 / 打开数据目录」 | `endpoint.ts` 在桌面模式改为 **抛错** 而非静默回退到 8765 |
+| 崩溃重启 | 非预期退出按 1s/2s/4s 退避，最多 3 次；状态经 `engine-status` 推送，托盘标题同步 | 代码路径 + `status()` 暴露 `restarts`/`lastExit` |
+| 日志文件 | `paths.logs/engine.log`，每行带 ISO 时间戳，保留最近 400 行 | 实测 `…\Logs\engine.log` 含 `WS READY` 与 `Background work slot acquired` |
+| 单实例 | tinyjs launcher 自带：双开只起一个 `xiaoqiao.exe` | 实测第二次启动后仍只有 1 个进程 |
+| 托盘 + 关窗隐藏 | `app.tray.set(...)` 成功后 `setHideOnClose(true)`；菜单 = 显示窗口 / 重启引擎 / 打开数据目录 / 退出 | `tinyjs dev` 日志：`[shell] tray ready; closing the window now hides the app` |
+| **R8 并发写库** | `runtime/instance_lock.py`：用回环 8760 端口当「后台工作槽」，抢到才跑调度器与渠道适配器；抢不到则 `passive=True` | 第二个引擎实测输出 `Another engine owns the background work slot; running in passive mode`，仍能服务 WS |
+
+踩坑记录：
+
+- `app.paths()` **没有 `userData`**，只有 `home / data / cache / logs / temp / resources / executables`。写成 `paths.userData` 会让 `engine.log` 永远不生成（静默 return）。
+- `tinyjs build` 报 `EEXIST: file already exists` 的根因是**上一次运行的 exe 还活着**锁住了 `dist/`，先 `Stop-Process` 再构建。
+- PowerShell 的 `CloseMainWindow()` 对 tinyjs 窗口返回 False（拿不到主窗口句柄），关窗行为只能人工验收或在 dev 日志里确认 `setHideOnClose` 没抛错。
+
+### 12.5 仍未做
+
+- M3：原生菜单、审批通知、文件夹选择、拖放、主题同步、IME 人工验收
 - M4：PyInstaller sidecar（现在打包版仍靠本机 `uv` 找引擎，只在开发机成立）、安装包、自更新
 - 图标仍是 64×64 放大到 1024×1024，正式发布前需重绘
 
