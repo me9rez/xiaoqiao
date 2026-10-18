@@ -1,6 +1,7 @@
 export interface UsageTotals {
   inputTokens: number
   outputTokens: number
+  cacheReadTokens: number
   totalTokens: number
   costUsd: number
   runs: number

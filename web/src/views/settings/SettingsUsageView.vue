@@ -80,6 +80,15 @@ const chart = computed(() => {
   return { series, days, peak }
 })
 
+/** Cache hit rate: share of prompt tokens served from the provider's cache. */
+const cacheHitRate = computed(() => {
+  const totalsValue = totals.value
+  if (!totalsValue) return null
+  const served = (totalsValue.inputTokens ?? 0) + (totalsValue.cacheReadTokens ?? 0)
+  if (served <= 0) return null
+  return Math.round(((totalsValue.cacheReadTokens ?? 0) / served) * 100)
+})
+
 const maxBotTokens = computed(() =>
   Math.max(1, ...(usageStore.summary?.byBot ?? []).map((row) => row.tokens)),
 )
@@ -155,18 +164,18 @@ onMounted(async () => {
             {{ compact(totals?.totalTokens) }}
           </p>
           <p class="text-[12px] text-[var(--color-text-faint)]">
-            Token
+            Token · 其中输出 {{ compact(totals?.outputTokens) }}
           </p>
         </div>
         <div class="rounded-[var(--radius-lg)] border-[0.5px] border-[var(--color-line)] bg-[var(--color-surface-raised)] p-4 shadow-[var(--shadow-sm)]">
           <p class="text-[12px] text-[var(--color-text-muted)]">
-            输出
+            缓存命中率
           </p>
           <p class="mt-1 text-[22px] font-semibold leading-7 text-[var(--color-text-strong)]">
-            {{ compact(totals?.outputTokens) }}
+            {{ cacheHitRate === null ? '—' : `${cacheHitRate}%` }}
           </p>
           <p class="text-[12px] text-[var(--color-text-faint)]">
-            Token
+            {{ cacheHitRate === null ? '暂无缓存数据' : `命中 ${compact(totals?.cacheReadTokens)} token` }}
           </p>
         </div>
         <div class="rounded-[var(--radius-lg)] border-[0.5px] border-[var(--color-line)] bg-[var(--color-surface-raised)] p-4 shadow-[var(--shadow-sm)]">

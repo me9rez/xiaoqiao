@@ -102,3 +102,29 @@ class TestBudget:
         usage.record(bot_id, "m", input_tokens=10_000, cost_usd=99.0)
 
         assert budget_exceeded(usage.today(), token_budget=0, usd_budget=0) is None
+
+
+class TestCacheTokens:
+    """`cache_read_tokens` feeds the usage page's cache-hit KPI."""
+
+    def test_summary_aggregates_cache_reads(self, env: tuple[UsageRepository, str]) -> None:
+        usage, bot_id = env
+        usage.record(bot_id, "deepseek/v4", input_tokens=100, output_tokens=10, cache_read_tokens=900)
+        usage.record(bot_id, "deepseek/v4", input_tokens=50, output_tokens=5, cache_read_tokens=200)
+
+        summary = usage.summary()
+
+        assert summary.cache_read_tokens == 1100
+        assert summary.input_tokens == 150
+
+    def test_defaults_to_zero(self, env: tuple[UsageRepository, str]) -> None:
+        usage, bot_id = env
+        usage.record(bot_id, "deepseek/v4", input_tokens=10, output_tokens=1)
+
+        assert usage.summary().cache_read_tokens == 0
+
+    def test_negative_values_are_clamped(self, env: tuple[UsageRepository, str]) -> None:
+        usage, bot_id = env
+        usage.record(bot_id, "deepseek/v4", input_tokens=10, cache_read_tokens=-5)
+
+        assert usage.summary().cache_read_tokens == 0

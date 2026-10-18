@@ -39,6 +39,7 @@ class UsageSummary:
     total_tokens: int = 0
     cost_usd: float = 0.0
     runs: int = 0
+    cache_read_tokens: int = 0
 
 
 def _now() -> datetime:
@@ -74,13 +75,14 @@ class UsageRepository:
         run_id: str | None = None,
         input_tokens: int = 0,
         output_tokens: int = 0,
+        cache_read_tokens: int = 0,
         cost_usd: float = 0.0,
     ) -> UsageEntry:
         entry_id = f"use_{uuid.uuid4().hex[:12]}"
         with self._connect() as conn:
             conn.execute(
                 "INSERT INTO usage_events (id, run_id, bot_id, model, input_tokens, output_tokens, "
-                "cost_usd, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "cache_read_tokens, cost_usd, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     entry_id,
                     run_id,
@@ -88,6 +90,7 @@ class UsageRepository:
                     model,
                     max(int(input_tokens), 0),
                     max(int(output_tokens), 0),
+                    max(int(cache_read_tokens), 0),
                     float(cost_usd),
                     _now().isoformat(),
                 ),
@@ -98,7 +101,8 @@ class UsageRepository:
 
     def summary(self, *, since: datetime | None = None, bot_id: str | None = None) -> UsageSummary:
         query = "SELECT COALESCE(SUM(input_tokens), 0) AS i, COALESCE(SUM(output_tokens), 0) AS o, "
-        query += "COALESCE(SUM(cost_usd), 0) AS c, COUNT(*) AS n FROM usage_events"
+        query += "COALESCE(SUM(cache_read_tokens), 0) AS cr, COALESCE(SUM(cost_usd), 0) AS c, "
+        query += "COUNT(*) AS n FROM usage_events"
         clauses: list[str] = []
         values: list[Any] = []
         if since is not None:
@@ -119,6 +123,7 @@ class UsageRepository:
             total_tokens=input_tokens + output_tokens,
             cost_usd=float(row["c"]),
             runs=int(row["n"]),
+            cache_read_tokens=int(row["cr"]),
         )
 
     def today(self, *, bot_id: str | None = None, now: datetime | None = None) -> UsageSummary:

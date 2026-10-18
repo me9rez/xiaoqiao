@@ -19,7 +19,7 @@ from xiaoqiao.paths import config_dir
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 #: Forward-only migrations, applied in order when the stored version is lower.
 #: ``CREATE TABLE IF NOT EXISTS`` cannot add a column to an existing table, so any
@@ -32,6 +32,10 @@ MIGRATIONS: tuple[tuple[int, str], ...] = (
     (
         3,
         "ALTER TABLE bots ADD COLUMN description TEXT NOT NULL DEFAULT ''",
+    ),
+    (
+        4,
+        "ALTER TABLE usage_events ADD COLUMN cache_read_tokens INTEGER NOT NULL DEFAULT 0",
     ),
 )
 

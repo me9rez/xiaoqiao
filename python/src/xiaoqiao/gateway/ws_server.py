@@ -900,6 +900,7 @@ class WsGatewayServer:
                                     "inputTokens": today.input_tokens,
                                     "outputTokens": today.output_tokens,
                                     "totalTokens": today.total_tokens,
+                                    "cacheReadTokens": today.cache_read_tokens,
                                     "costUsd": today.cost_usd,
                                     "runs": today.runs,
                                 },
@@ -907,6 +908,7 @@ class WsGatewayServer:
                                     "inputTokens": window.input_tokens,
                                     "outputTokens": window.output_tokens,
                                     "totalTokens": window.total_tokens,
+                                    "cacheReadTokens": window.cache_read_tokens,
                                     "costUsd": window.cost_usd,
                                     "runs": window.runs,
                                 },
@@ -1474,6 +1476,7 @@ class WsGatewayServer:
                     run_id=run_id,
                     input_tokens=event.input_tokens,
                     output_tokens=event.output_tokens,
+                    cache_read_tokens=event.cache_read_tokens,
                 )
             self._emit(event, session_id=session.id, run_id=run_id)
 
@@ -1886,6 +1889,7 @@ class WsGatewayServer:
                     run_id=run_id,
                     input_tokens=event.input_tokens,
                     output_tokens=event.output_tokens,
+                    cache_read_tokens=event.cache_read_tokens,
                 )
             self._emit(event, session_id=session.id, group_id=group_id, run_id=run_id)
 
@@ -2066,6 +2070,7 @@ class WsGatewayServer:
                         run_id=run_id,
                         input_tokens=event.input_tokens,
                         output_tokens=event.output_tokens,
+                        cache_read_tokens=event.cache_read_tokens,
                     )
             self._emit(event, session_id=session.id, group_id=group_id, run_id=run_id)
 
