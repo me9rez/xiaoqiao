@@ -8,7 +8,6 @@ import {
   FolderOpen,
   Layout,
   HelpCircle,
-  Loader2,
   Plus,
   Settings,
   ShieldCheck,
@@ -19,9 +18,11 @@ import {
 } from '@lucide/vue'
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
+import BotStatusDot from '@/components/bots/BotStatusDot.vue'
 import GroupEditorModal from '@/components/groups/GroupEditorModal.vue'
 import GroupList from '@/components/groups/GroupList.vue'
 import { gatewayService } from '@/services/gateway'
+import { useActivityStore } from '@/stores/activity'
 import { useApprovalsStore } from '@/stores/approvals'
 import { useBotsStore } from '@/stores/bots'
 import { useChatStore } from '@/stores/chat'
@@ -33,6 +34,7 @@ const chatStore = useChatStore()
 const sessionsStore = useSessionsStore()
 const botsStore = useBotsStore()
 const approvalsStore = useApprovalsStore()
+const activityStore = useActivityStore()
 const workspaceStore = useWorkspaceStore()
 
 const firstBotId = computed(() => botsStore.bots[0]?.id ?? '')
@@ -45,9 +47,13 @@ function belongsToActiveBot(session: { botId?: string }): boolean {
 }
 const router = useRouter()
 
-function isSessionRunning(sessionId: string): boolean {
-  const session = chatStore.sessions.get(sessionId)
-  return session?.runState === 'running' || session?.runState === 'waiting_approval'
+function sessionState(sessionId: string): 'idle' | 'working' | 'needs_you' | 'error' {
+  const fromServer = activityStore.entryForSession(sessionId)?.state
+  if (fromServer && fromServer !== 'idle') return fromServer
+  const local = chatStore.sessions.get(sessionId)?.runState
+  if (local === 'waiting_approval') return 'needs_you'
+  if (local === 'running') return 'working'
+  return 'idle'
 }
 
 let unsubscribe: (() => void) | null = null
@@ -327,10 +333,7 @@ function handleRenameKeydown(sessionId: string, event: KeyboardEvent) {
                 class="flex items-center gap-1.5"
                 @dblclick="startRename(session, $event)"
               >
-                <Loader2
-                  v-if="isSessionRunning(session.id)"
-                  class="w-3 h-3 animate-spin text-[var(--text-muted)] shrink-0"
-                />
+                <BotStatusDot v-if="sessionState(session.id) !== 'idle'" :state="sessionState(session.id)" size="sm" />
                 <span class="truncate">{{ session.title || '未命名会话' }}</span>
               </div>
             </div>
@@ -358,10 +361,7 @@ function handleRenameKeydown(sessionId: string, event: KeyboardEvent) {
           @contextmenu="openContextMenu(session.id, $event)"
         >
           <div class="flex items-center gap-1.5 min-w-0 flex-1">
-            <Loader2
-              v-if="isSessionRunning(session.id)"
-              class="w-3 h-3 animate-spin text-[var(--text-muted)] shrink-0"
-            />
+            <BotStatusDot v-if="sessionState(session.id) !== 'idle'" :state="sessionState(session.id)" size="sm" />
             <span class="truncate">{{ session.title || '未命名会话' }}</span>
           </div>
         </RouterLink>

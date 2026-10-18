@@ -87,6 +87,38 @@ class RoutineRepository:
     def _connect(self):
         return store.connect(self._path)
 
+    def set_steps(self, routine_id: str, steps: list[dict[str, Any]]) -> None:
+        """Store the reviewed step list for a routine."""
+        with self._connect() as conn:
+            conn.execute("DELETE FROM routine_steps WHERE routine_id = ?", (routine_id,))
+            if steps:
+                conn.executemany(
+                    "INSERT INTO routine_steps (routine_id, seq, tool, args_summary) VALUES (?, ?, ?, ?)",
+                    [
+                        (routine_id, index, item.get("tool", ""), item.get("argsSummary", ""))
+                        for index, item in enumerate(steps)
+                    ],
+                )
+
+    def steps(self, routine_id: str) -> list[dict[str, str]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT tool, args_summary FROM routine_steps WHERE routine_id = ? ORDER BY seq",
+                (routine_id,),
+            ).fetchall()
+        return [{"tool": row["tool"], "argsSummary": row["args_summary"] or ""} for row in rows]
+
+    def prompt_with_steps(self, routine: Routine) -> str:
+        """Return the routine prompt with the recorded steps appended."""
+        steps = self.steps(routine.id)
+        if not steps:
+            return routine.prompt
+        lines = [routine.prompt.rstrip(), "", "上次的做法（按这个顺序，情况变了先说明再调整）："]
+        for index, step in enumerate(steps, start=1):
+            args = f"（{step['argsSummary']}）" if step["argsSummary"] else ""
+            lines.append(f"{index}. {step['tool']}{args}")
+        return "\n".join(lines)
+
     def get(self, routine_id: str) -> Routine | None:
         with self._connect() as conn:
             row = conn.execute("SELECT * FROM routines WHERE id = ?", (routine_id,)).fetchone()

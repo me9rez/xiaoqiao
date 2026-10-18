@@ -137,6 +137,24 @@ CREATE INDEX IF NOT EXISTS idx_runs_bot ON runs(bot_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_runs_group ON runs(group_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_runs_status ON runs(status);
 
+-- Tool-call steps captured during a run ("teach once, then schedule").
+CREATE TABLE IF NOT EXISTS run_steps (
+  run_id       TEXT NOT NULL,
+  seq          INTEGER NOT NULL,
+  tool         TEXT NOT NULL,
+  args_summary TEXT,
+  PRIMARY KEY (run_id, seq)
+);
+
+-- The same steps, frozen into a routine so it can be reviewed and replayed later.
+CREATE TABLE IF NOT EXISTS routine_steps (
+  routine_id   TEXT NOT NULL,
+  seq          INTEGER NOT NULL,
+  tool         TEXT NOT NULL,
+  args_summary TEXT,
+  PRIMARY KEY (routine_id, seq)
+);
+
 CREATE TABLE IF NOT EXISTS routines (
   id                 TEXT PRIMARY KEY,
   bot_id             TEXT NOT NULL REFERENCES bots(id) ON DELETE CASCADE,

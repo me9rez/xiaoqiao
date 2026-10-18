@@ -1,30 +1,26 @@
 <script setup lang="ts">
 import { Pencil, Plus } from '@lucide/vue'
-import { computed } from 'vue'
 
 import BotAvatar from '@/components/bots/BotAvatar.vue'
+import BotStatusDot from '@/components/bots/BotStatusDot.vue'
 import { gatewayService } from '@/services/gateway'
+import { useActivityStore } from '@/stores/activity'
 import { useBotsStore } from '@/stores/bots'
-import { useChatStore } from '@/stores/chat'
-import { useSessionsStore } from '@/stores/sessions'
 import type { Bot } from '@/types/bot'
 
 const emit = defineEmits<{ edit: [bot: Bot | null] }>()
 
 const botsStore = useBotsStore()
-const sessionsStore = useSessionsStore()
-const chatStore = useChatStore()
+const activityStore = useActivityStore()
 
-const runningBotIds = computed(() => {
-  const ids = new Set<string>()
-  for (const session of sessionsStore.sessions) {
-    const state = chatStore.sessions.get(session.id)?.runState
-    if (session.botId && (state === 'running' || state === 'waiting_approval')) {
-      ids.add(session.botId)
-    }
-  }
-  return ids
-})
+function statusLabel(botId: string): string {
+  const entry = activityStore.entryOf(botId)
+  if (!entry || entry.state === 'idle') return ''
+  const doing = entry.currentTool ? `：${entry.currentTool}` : ''
+  if (entry.state === 'needs_you') return '等你审批'
+  if (entry.state === 'error') return '最近一次运行失败'
+  return `正在忙${doing}`
+}
 
 function handleSelect(botId: string) {
   if (botsStore.activeBotId === botId) return
@@ -65,10 +61,10 @@ async function handleAdd() {
       @dblclick="emit('edit', bot)"
     >
       <BotAvatar :bot="bot" />
-      <span
-        v-if="runningBotIds.has(bot.id)"
-        class="absolute -right-0.5 -bottom-0.5 w-2.5 h-2.5 rounded-full bg-[var(--color-accent)] ring-2 ring-[var(--color-sidebar-bg)]"
-        aria-label="运行中"
+      <BotStatusDot
+        class="absolute -right-0.5 -bottom-0.5"
+        :state="activityStore.stateOf(bot.id)"
+        :label="statusLabel(bot.id)"
       />
       <span
         class="absolute -right-1 -top-1 hidden group-hover:flex items-center justify-center w-5 h-5 rounded-full bg-[var(--color-surface-raised)] border border-[var(--color-line)] text-[var(--color-text-muted)]"

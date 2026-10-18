@@ -1,12 +1,11 @@
 <script setup lang="ts">
-import { ArrowLeft, Clock, Zap } from '@lucide/vue'
+import { ArrowLeft, Zap } from '@lucide/vue'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 
 const router = useRouter()
 const route = useRoute()
 
 const menuItems = [
-  { name: 'automation-tasks', label: '定时任务', icon: Clock, to: '/automation/tasks' },
   { name: 'automation-listeners', label: '监听事件', icon: Zap, to: '/automation/listeners' },
 ]
 

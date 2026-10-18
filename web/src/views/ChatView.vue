@@ -8,6 +8,7 @@ import ChatHeader from '@/components/chat/ChatHeader.vue'
 import ContextPanel from '@/components/chat/ContextPanel.vue'
 import Sidebar from '@/components/chat/Sidebar.vue'
 import { gatewayService } from '@/services/gateway'
+import { useActivityStore } from '@/stores/activity'
 import { useApprovalsStore } from '@/stores/approvals'
 import { useBotsStore } from '@/stores/bots'
 import { useGroupsStore } from '@/stores/groups'
@@ -18,6 +19,7 @@ const sessionsStore = useSessionsStore()
 const botsStore = useBotsStore()
 const groupsStore = useGroupsStore()
 const approvalsStore = useApprovalsStore()
+const activityStore = useActivityStore()
 const route = useRoute()
 
 const editorOpen = ref(false)
@@ -41,13 +43,16 @@ function handleBotSaved() {
 onMounted(() => {
   groupsStore.listen()
   approvalsStore.listen()
+  activityStore.listen()
   if (gatewayService.isConnected()) {
     void botsStore.load()
     void groupsStore.load()
+    void activityStore.load()
   }
   unsubscribe = gatewayService.on('open', () => {
     void botsStore.load()
     void groupsStore.load()
+    void activityStore.load()
   })
 })
 

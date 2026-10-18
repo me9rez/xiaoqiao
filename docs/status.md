@@ -128,6 +128,24 @@ esources/python，wheel 装进它自己的 site-packages；打包版引擎来自
 | CLI | ✅ `xiaoqiao config path`（打印 config.toml/mcp.json 真实路径）与 `xiaoqiao config show`（输出解析后的值，api_key 打码） |
 | 端到端 | ✅ 起真实网关连 WS：旧 `settings.json` 自动迁移 → `getSettings` 返回新词汇 → `updateSettings` 只改 `default_model` 一行 → 文件其余内容与注释不变 |
 
+
+---
+
+## 工作台体验（2026-10-18，M1–M5）
+
+方案见 [workbench-plan.md](workbench-plan.md)（对标缺口来自 [grok-bot-comparison.md](grok-bot-comparison.md)）。
+
+| 项 | 状态 |
+|---|---|
+| 状态可见性 | ✅ 服务端 `getActivity` 聚合 + `activity` 广播（四态：等你 / 在忙 / 出错 / 空闲）；`BotStatusDot` 三态点，`title` + `aria-label` 成套；刷新与多标签页一致 |
+| 第一屏 | ✅ `chat-home` 改为 Now 视图：等你 / 需要看一眼 / 在忙 / 刚完成，无活动时回落到原输入框空状态 |
+| 教一遍 | ✅ run 期间捕获工具调用序列（`run_steps` 表）→ `draftRoutineFromRun` 生成草稿 → Now 视图「存为定时任务」→ 步骤随 routine 落库并在触发时渲染进 prompt |
+| 去重 | ✅ `/automation/tasks` 重定向到 `/routines`（此前两个入口同名「定时任务」，一 JSON 一 SQLite） |
+| 顺带修复 | ✅ 无 group 目标的 routine 此前只打日志不执行，现投递到 Bot 自己的会话 |
+| 回归 | ✅ pytest **266**、vitest **84**、pyright 0、ruff 干净、`pnpm type-check` 与 `pnpm build` 通过 |
+
+未做：步骤清单的独立编辑 UI、会话页内的「存为定时任务」入口、事件监听的存储合并（仍走 JSON）。
+
 未做（方案 §12 明示）：Kimi 的 `managed:` 供应商 / OAuth / `secondary_model` / `hooks` / `background` /
 `database` / `watch` / `tui.toml` / 项目级 `local.toml`；`anthropic` 客户端分派留作后续。
 

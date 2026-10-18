@@ -101,6 +101,13 @@ The entire agent run is finished. The TUI should return to idle state.
 ```
 An error occurred. `recoverable: true` means the agent may continue; `false` means the run should stop.
 
+### activity
+Broadcast whenever a run starts, waits for approval or finishes. Payload matches `getActivity`.
+
+```json
+{"type":"activity","bots":[...],"pendingApprovals":1,"generatedAt":"..."}
+```
+
 ### rpc_response
 ```json
 {"type":"rpc_response","id":"req-1","result":[{"id":"abc","title":"hello","messageCount":2,"createdAt":"...","updatedAt":"..."}]}
@@ -164,9 +171,39 @@ Deletes a session. Returns `{"ok": true}` on success.
 #### getSettings / updateSettings
 ```json
 {"id":"req-6","method":"getSettings","params":{}}
-{"id":"req-7","method":"updateSettings","params":{"selectedModel":"deepseek/deepseek-v4-flash"}}
+{"id":"req-7","method":"updateSettings","params":{"default_model":"deepseek/deepseek-v4-flash"}}
 ```
-Read or update the active provider/model settings.
+Read or update the active configuration. The payload mirrors `~/.xiaoqiao/config.toml`
+(snake_case, models keyed by alias); legacy camelCase keys such as `primaryModel`
+are still accepted on write.
+
+#### getActivity
+```json
+{"id":"req-8","method":"getActivity","params":{}}
+```
+Returns what every bot is doing right now:
+
+```json
+{
+  "bots": [
+    {"botId":"bot_1","state":"needs_you","runId":"run_x","sessionId":"s_1","groupId":null,
+     "title":"本周竞品摘要","currentTool":"run_command","startedAt":"...",
+     "lastFinished":{"runId":"run_w","title":"上周摘要","status":"done","endedAt":"..."}}
+  ],
+  "pendingApprovals": 1,
+  "generatedAt": "..."
+}
+```
+
+`state` is one of `needs_you` > `working` > `error` (a failure within five minutes) > `idle`.
+The same payload is broadcast as the `activity` event whenever a run changes state.
+
+#### draftRoutineFromRun
+```json
+{"id":"req-9","method":"draftRoutineFromRun","params":{"runId":"run_x"}}
+```
+Builds a routine draft from a finished run: `{runId, botId, name, prompt, steps, schedule, hasSteps}`.
+The steps are *context* for the next run, not a replay of the original tool arguments.
 
 > RPC requests are implemented by the **WebSocket gateway** (`gateway/ws_server.py`). The legacy stdio gateway only supports `prompt` and `cancel`.
 

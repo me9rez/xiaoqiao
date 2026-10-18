@@ -223,6 +223,44 @@ def _summarize_event(obj: dict[str, Any]) -> str:
     return " ".join(parts)
 
 
+_ARG_HINTS = ("path", "command", "query", "url", "pattern", "text", "title", "name", "file")
+_SECRET_HINTS = ("key", "token", "secret", "password")
+
+
+def _summarize_args(arguments: Any) -> str:
+    """One human-readable line from a tool call's JSON arguments.
+
+    Only a summary is kept: secrets stay out of the routine draft, and long
+    blobs are truncated, because that text ends up in a config file a human reads.
+    """
+    raw = arguments if isinstance(arguments, str) else json.dumps(arguments or {}, ensure_ascii=False)
+    try:
+        data = json.loads(raw or "{}")
+    except TypeError, ValueError:
+        return raw[:80]
+    if not isinstance(data, dict):
+        return raw[:80]
+    for key in _ARG_HINTS:
+        value = data.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()[:80]
+    for key in data:
+        if any(hint in key.lower() for hint in _SECRET_HINTS):
+            return f"{key}=***"
+    return json.dumps(data, ensure_ascii=False)[:80]
+
+
+def _minutes_since(stamp: str, now: datetime) -> float:
+    """Minutes between an ISO timestamp and ``now`` (inf when unparseable)."""
+    try:
+        moment = datetime.fromisoformat(stamp)
+    except ValueError:
+        return float("inf")
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=UTC)
+    return (now - moment).total_seconds() / 60
+
+
 class WsGatewayServer:
     """WebSocket gateway — one connection, dispatches to agent loop."""
 
@@ -266,9 +304,13 @@ class WsGatewayServer:
         self._artifacts = ArtifactRepository(db_path)
         self._channels = ChannelRepository(db_path)
         self._adapters: dict[str, TelegramAdapter] = {}
-        self._runs = RunRepository(db_path)
+        self._runs = RunRepository(db_path, on_change=self._broadcast_activity)
         self._usage = UsageRepository(db_path)
         self._rate_window: dict[str, list[float]] = {}
+        #: Latest tool name per run, used by the activity snapshot ("what is it doing").
+        self._run_tool: dict[str, str] = {}
+        #: Tool-call sequence per run, captured so a finished run can be turned into a routine.
+        self._run_steps: dict[str, list[dict[str, str]]] = {}
         self._session: Any = None
         self._ws: ServerConnection | None = None
         self._emit_tasks: list[asyncio.Task[None]] = []
@@ -305,6 +347,14 @@ class WsGatewayServer:
         run_id: str = "",
     ) -> None:
         obj = _serialize_event(event)
+        if run_id and isinstance(event, (ToolCallStartEvent, ToolExecutionStartEvent)):
+            tool_name = getattr(event, "name", "")
+            if tool_name:
+                self._run_tool[run_id] = tool_name
+        if run_id and isinstance(event, ToolCallStartEvent):
+            self._run_steps.setdefault(run_id, []).append(
+                {"tool": event.name or "", "args_summary": _summarize_args(getattr(event, "arguments", ""))}
+            )
         if session_id:
             obj["sessionId"] = session_id
         if group_id:
@@ -336,6 +386,146 @@ class WsGatewayServer:
                 "message": message_to_dict(message),
             }
         )
+
+    # ── activity ("what is every bot doing right now") ───────────
+
+    def _activity_snapshot(self) -> dict[str, Any]:
+        """Aggregate each bot's current state from the runs table.
+
+        The web UI used to track this client-side, so a page reload lost every
+        status. One server-side snapshot makes it consistent across tabs,
+        reloads and the desktop shell.
+        """
+        now = datetime.now(UTC)
+        running = self._runs.list(status="running", limit=200)
+        waiting = self._runs.list(status="waiting_approval", limit=200)
+        finished = self._runs.list(status="done", limit=100) + self._runs.list(status="failed", limit=100)
+
+        active: dict[str, Any] = {}
+        for run in waiting:
+            active[run.bot_id] = (run, "needs_you")
+        for run in running:
+            active.setdefault(run.bot_id, (run, "working"))
+
+        last_finished: dict[str, Any] = {}
+        for run in sorted(finished, key=lambda item: item.ended_at or "", reverse=True):
+            last_finished.setdefault(run.bot_id, run)
+
+        bots: list[dict[str, Any]] = []
+        for bot in self._bots.list():
+            entry: dict[str, Any] = {"botId": bot.id, "state": "idle"}
+            current = active.get(bot.id)
+            if current is not None:
+                run, state = current
+                entry.update(
+                    {
+                        "state": state,
+                        "runId": run.id,
+                        "sessionId": run.session_id,
+                        "groupId": run.group_id,
+                        "title": self._run_title(run),
+                        "currentTool": self._run_tool.get(run.id, ""),
+                        "startedAt": run.started_at or run.created_at,
+                    }
+                )
+            else:
+                failed = last_finished.get(bot.id)
+                if (
+                    failed is not None
+                    and failed.status == "failed"
+                    and failed.ended_at
+                    and _minutes_since(failed.ended_at, now) < 5
+                ):
+                    entry["state"] = "error"
+            previous = last_finished.get(bot.id)
+            if previous is not None:
+                entry["lastFinished"] = {
+                    "runId": previous.id,
+                    "sessionId": previous.session_id,
+                    "groupId": previous.group_id,
+                    "title": self._run_title(previous),
+                    "status": previous.status,
+                    "endedAt": previous.ended_at,
+                }
+            bots.append(entry)
+
+        return {
+            "bots": bots,
+            "pendingApprovals": len(self._approvals.list(status="pending", limit=200)),
+            "generatedAt": now.isoformat(),
+        }
+
+    def _run_title(self, run: Any) -> str:
+        if run.group_id:
+            group = self._groups.get(run.group_id)
+            return group.name if group is not None else ""
+        if run.session_id:
+            session = load_session(run.session_id)
+            if session is not None and session.title:
+                return session.title
+            record = self._sessions_db.get(run.session_id)
+            if record is not None:
+                return record.title or ""
+        return ""
+
+    def _routine_payload(self, routine: Any) -> dict[str, Any]:
+        payload = routine_to_dict(routine)
+        payload["steps"] = self._routines.steps(routine.id)
+        return payload
+
+    def _draft_routine_from_run(self, run_id: str) -> dict[str, Any]:
+        """Turn a finished run into a routine draft (steps + a name + a schedule).
+
+        Deliberately *not* a replay: the draft carries the steps as context, the
+        model decides how to run them next time. See docs/workbench-plan.md §3.2.
+        """
+        run = self._runs.get(run_id)
+        if run is None:
+            raise ValueError(f"unknown run: {run_id}")
+        steps = self._runs.steps(run_id)
+        title = self._run_title(run) or "重复上次的工作"
+        prompt = self._last_user_text_for(run) or title
+        tz = datetime.now().astimezone().tzinfo
+        return {
+            "runId": run_id,
+            "botId": run.bot_id,
+            "name": title[:60],
+            "prompt": prompt[:400],
+            "steps": steps,
+            "schedule": {"kind": "daily", "at": "09:00", "tz": str(tz)},
+            "hasSteps": bool(steps),
+        }
+
+    def _last_user_text_for(self, run: Any) -> str:
+        if not run.session_id:
+            return ""
+        session = load_session(run.session_id)
+        if session is None:
+            return ""
+        for message in reversed(session.messages):
+            if str(message.get("role")) != "user":
+                continue
+            for content in message.get("contents", []):
+                if isinstance(content, dict) and content.get("type") == "text" and content.get("text"):
+                    return str(content["text"])
+        return ""
+
+    def _finish_run(self, run_id: str, status: str, *, error: str | None = None) -> None:
+        """Close a run and freeze whatever tool steps it produced."""
+        steps = self._run_steps.pop(run_id, [])
+        try:
+            self._runs.record_steps(run_id, steps)
+        except Exception:
+            logger.debug("Could not persist steps for %s", run_id, exc_info=True)
+        self._run_tool.pop(run_id, None)
+        self._runs.finish(run_id, status, error=error)
+
+    def _broadcast_activity(self) -> None:
+        """Push the activity snapshot to every client (best effort)."""
+        try:
+            self._broadcast({"type": "activity", **self._activity_snapshot()})
+        except Exception:
+            logger.debug("Activity broadcast failed", exc_info=True)
 
     def _send_rpc_response(self, request_id: str, result: Any) -> None:
         if self._ws is None:
@@ -511,6 +701,12 @@ class WsGatewayServer:
                     except Exception as exc:
                         logger.exception("updateSettings failed")
                         self._send_rpc_error(request_id, str(exc))
+                elif method == "getActivity":
+                    try:
+                        self._send_rpc_response(request_id, self._activity_snapshot())
+                    except Exception as exc:
+                        logger.exception("getActivity failed")
+                        self._send_rpc_error(request_id, str(exc))
                 elif method == "listBots":
                     try:
                         self._bots.ensure_default()
@@ -611,9 +807,15 @@ class WsGatewayServer:
                 elif method == "listRoutines":
                     try:
                         items = self._routines.list(bot_id=params.get("botId") or None)
-                        self._send_rpc_response(request_id, [routine_to_dict(item) for item in items])
+                        self._send_rpc_response(request_id, [self._routine_payload(item) for item in items])
                     except Exception as exc:
                         logger.exception("listRoutines failed")
+                        self._send_rpc_error(request_id, str(exc))
+                elif method == "draftRoutineFromRun":
+                    try:
+                        self._send_rpc_response(request_id, self._draft_routine_from_run(params.get("runId", "")))
+                    except Exception as exc:
+                        logger.exception("draftRoutineFromRun failed")
                         self._send_rpc_error(request_id, str(exc))
                 elif method == "createRoutine":
                     try:
@@ -626,7 +828,10 @@ class WsGatewayServer:
                             target_channel_id=params.get("targetChannelId") or None,
                             enabled=bool(params.get("enabled", True)),
                         )
-                        self._send_rpc_response(request_id, routine_to_dict(routine))
+                        steps = params.get("steps")
+                        if isinstance(steps, list) and steps:
+                            self._routines.set_steps(routine.id, steps)
+                        self._send_rpc_response(request_id, self._routine_payload(routine))
                     except Exception as exc:
                         logger.exception("createRoutine failed")
                         self._send_rpc_error(request_id, str(exc))
@@ -1280,10 +1485,10 @@ class WsGatewayServer:
                 return
 
             self._remember_runtime(session, runtime)
-            self._runs.finish(run_id, "done")
+            self._finish_run(run_id, "done")
         except asyncio.CancelledError:
             logger.info("Agent run cancelled")
-            self._runs.finish(run_id, "cancelled")
+            self._finish_run(run_id, "cancelled")
             self._emit(
                 ErrorEvent(message="Agent run cancelled", recoverable=True),
                 session_id=session.id,
@@ -1293,7 +1498,7 @@ class WsGatewayServer:
         except Exception as exc:
             error_occurred = True
             logger.exception("Agent loop failed")
-            self._runs.finish(run_id, "failed", error=str(exc))
+            self._finish_run(run_id, "failed", error=str(exc))
             self._emit(
                 ErrorEvent(message=str(exc), recoverable=False),
                 session_id=session.id,
@@ -1545,8 +1750,10 @@ class WsGatewayServer:
                 "scheduledAt": scheduled_at,
             }
         )
+        prompt = self._routines.prompt_with_steps(routine)
         if not routine.target_group_id:
-            logger.info("Routine %s fired without a target; nothing to deliver", routine.id)
+            # No group target: run it into the bot's own thread instead of dropping it.
+            await self._handle_prompt(prompt, bot_id=routine.bot_id)
             return
         if self._groups.get(routine.target_group_id) is None:
             logger.warning("Routine %s targets a missing group %s", routine.id, routine.target_group_id)
@@ -1554,7 +1761,7 @@ class WsGatewayServer:
         notify = self._notify_for_group(routine.target_group_id)
         await self._handle_group_prompt(
             routine.target_group_id,
-            routine.prompt,
+            prompt,
             trigger="routine",
             notify=notify,
         )
@@ -1666,7 +1873,7 @@ class WsGatewayServer:
         try:
             outcome = await runtime.run_turn(prompt_block, _on_event)
         except Exception as exc:
-            self._runs.finish(run_id, "failed", error=str(exc))
+            self._finish_run(run_id, "failed", error=str(exc))
             raise
         self._scan_artifacts(bot, run_started, group_id=group_id)
         save_framework_session(runtime.agent_session)
@@ -1685,7 +1892,7 @@ class WsGatewayServer:
                 "model": session_model,
             }
             return "（需要你审批后才能继续）"
-        self._runs.finish(run_id, "done")
+        self._finish_run(run_id, "done")
         return outcome.text
 
     def _record_approval(
@@ -1848,19 +2055,19 @@ class WsGatewayServer:
                     self._runs.set_status(run_id, "waiting_approval")
             else:
                 if run_id:
-                    self._runs.finish(run_id, "done")
+                    self._finish_run(run_id, "done")
             self._remember_runtime(session, runtime)
             self._save_session_if_jsonl(session)
         except asyncio.CancelledError:
             logger.info("Approval resume cancelled")
             if run_id:
-                self._runs.finish(run_id, "cancelled")
+                self._finish_run(run_id, "cancelled")
             self._emit(ErrorEvent(message="Agent run cancelled", recoverable=True), session_id=session.id)
             self._emit(DoneEvent(), session_id=session.id)
         except Exception as exc:
             logger.exception("Approval resume failed")
             if run_id:
-                self._runs.finish(run_id, "failed", error=str(exc))
+                self._finish_run(run_id, "failed", error=str(exc))
             self._emit(ErrorEvent(message=str(exc), recoverable=False), session_id=session.id)
             self._emit(DoneEvent(), session_id=session.id)
         finally:

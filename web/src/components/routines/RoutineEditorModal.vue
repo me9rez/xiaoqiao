@@ -4,9 +4,9 @@ import { reactive, ref, watch } from 'vue'
 import { useBotsStore } from '@/stores/bots'
 import { useGroupsStore } from '@/stores/groups'
 import { useRoutinesStore } from '@/stores/routines'
-import type { Routine, RoutineSchedule, ScheduleKind } from '@/types/routine'
+import type { Routine, RoutineDraftSuggestion, RoutineSchedule, ScheduleKind } from '@/types/routine'
 
-const props = defineProps<{ open: boolean; routine: Routine | null }>()
+const props = defineProps<{ open: boolean; routine: Routine | null; draft?: RoutineDraftSuggestion | null }>()
 const emit = defineEmits<{ close: []; saved: [routine: Routine] }>()
 
 const botsStore = useBotsStore()
@@ -29,17 +29,17 @@ const form = reactive({
 })
 
 watch(
-  () => [props.open, props.routine] as const,
-  ([open, routine]) => {
+  () => [props.open, props.routine, props.draft] as const,
+  ([open, routine, draft]) => {
     if (!open) return
-    form.botId = routine?.botId ?? botsStore.bots[0]?.id ?? ''
-    form.name = routine?.name ?? ''
-    form.kind = routine?.schedule.kind ?? 'daily'
-    form.at = routine?.schedule.at ?? '09:00'
-    form.minutes = routine?.schedule.minutes ?? 60
+    form.botId = routine?.botId ?? draft?.botId ?? botsStore.bots[0]?.id ?? ''
+    form.name = routine?.name ?? draft?.name ?? ''
+    form.kind = routine?.schedule.kind ?? draft?.schedule.kind ?? 'daily'
+    form.at = routine?.schedule.at ?? draft?.schedule.at ?? '09:00'
+    form.minutes = routine?.schedule.minutes ?? draft?.schedule.minutes ?? 60
     form.once = routine?.schedule.at ? routine.schedule.at.slice(0, 16) : ''
-    form.prompt = routine?.prompt ?? ''
-    form.targetGroupId = routine?.targetGroupId ?? ''
+    form.prompt = routine?.prompt ?? draft?.prompt ?? ''
+    form.targetGroupId = routine?.targetGroupId ?? draft?.targetGroupId ?? ''
     form.enabled = routine?.enabled ?? true
     formError.value = null
   },
@@ -91,6 +91,7 @@ async function handleSave() {
       prompt: form.prompt,
       targetGroupId: form.targetGroupId || null,
       enabled: form.enabled,
+      steps: props.routine ? undefined : (props.draft?.steps ?? []),
     }
     const saved = props.routine
       ? await routinesStore.update(props.routine.id, payload)

@@ -242,12 +242,27 @@ class RunRepository:
     ``run_id`` without forcing them through the queue yet.
     """
 
-    def __init__(self, db_path: str | Path | None = None) -> None:
+    def __init__(
+        self,
+        db_path: str | Path | None = None,
+        *,
+        on_change: Callable[[], None] | None = None,
+    ) -> None:
         self._path = db_path
+        self._on_change = on_change
         store.init_db(self._path)
 
     def _connect(self):
         return store.connect(self._path)
+
+    def _changed(self) -> None:
+        """Notify the owner that a run changed state (best effort)."""
+        if self._on_change is None:
+            return
+        try:
+            self._on_change()
+        except Exception:  # pragma: no cover - the hook must never break a run
+            logger.debug("run change hook failed", exc_info=True)
 
     def begin(
         self,
@@ -279,11 +294,13 @@ class RunRepository:
                     _now(),
                 ),
             )
+        self._changed()
         return run_id
 
     def set_status(self, run_id: str, status: str) -> None:
         with self._connect() as conn:
             conn.execute("UPDATE runs SET status = ? WHERE id = ?", (status, run_id))
+        self._changed()
 
     def finish(self, run_id: str, status: str = "done", *, error: str | None = None) -> None:
         with self._connect() as conn:
@@ -291,6 +308,29 @@ class RunRepository:
                 "UPDATE runs SET status = ?, ended_at = ?, error = ? WHERE id = ?",
                 (status, _now(), error, run_id),
             )
+        self._changed()
+
+    def record_steps(self, run_id: str, steps: list[dict[str, Any]]) -> None:
+        """Persist the tool-call sequence captured during a run."""
+        if not steps:
+            return
+        with self._connect() as conn:
+            conn.execute("DELETE FROM run_steps WHERE run_id = ?", (run_id,))
+            conn.executemany(
+                "INSERT INTO run_steps (run_id, seq, tool, args_summary) VALUES (?, ?, ?, ?)",
+                [
+                    (run_id, index, item.get("tool", ""), item.get("args_summary", ""))
+                    for index, item in enumerate(steps)
+                ],
+            )
+
+    def steps(self, run_id: str) -> list[dict[str, str]]:
+        """Return the captured steps for a run, in order."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT tool, args_summary FROM run_steps WHERE run_id = ? ORDER BY seq", (run_id,)
+            ).fetchall()
+        return [{"tool": row["tool"], "argsSummary": row["args_summary"] or ""} for row in rows]
 
     def get(self, run_id: str) -> RunRecord | None:
         with self._connect() as conn:

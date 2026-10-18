@@ -1,7 +1,7 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import ChatView from '../views/ChatView.vue'
 import ChatSessionView from '../views/ChatSessionView.vue'
-import EmptyStateView from '../views/EmptyStateView.vue'
+import NowView from '../views/NowView.vue'
 import SettingsLayout from '../views/settings/SettingsLayout.vue'
 
 const router = createRouter({
@@ -14,7 +14,7 @@ const router = createRouter({
         {
           path: '',
           name: 'chat-home',
-          component: EmptyStateView,
+          component: NowView,
           meta: { keepAliveKey: 'home' },
         },
         {
@@ -125,12 +125,13 @@ const router = createRouter({
     {
       path: '/automation',
       component: () => import('../views/automation/AutomationLayout.vue'),
-      redirect: '/automation/tasks',
+      redirect: '/automation/listeners',
       children: [
+        // Scheduled tasks now live in /routines (SQLite + Scheduler). The old
+        // JSON-backed view stays reachable through a redirect for bookmarks.
         {
           path: 'tasks',
-          name: 'automation-tasks',
-          component: () => import('../views/automation/ScheduledTasksView.vue'),
+          redirect: '/routines',
         },
         {
           path: 'listeners',
