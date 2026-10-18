@@ -14,8 +14,10 @@
 ```powershell
 cd desktop
 tinyjs dev                 # Vite HMR + 原生窗口；自动拉起 python 引擎
-tinyjs build               # 产物在 desktop/dist/
+tinyjs build               # 产物在 desktop/dist/（需要 resources/python 已就位）
 ```
+
+- 打包版引擎来自 `desktop/resources/python/python.exe`（python-build-standalone + 装进去的 wheel），由 `.\scripts\build-desktop.ps1` 一次性准备；`-SkipRuntime` 可复用已有运行时。
 
 - 引擎由 `src/backend/engine.js` 拉起：`python -m xiaoqiao.main --desktop --ws-port 0`，端口由系统分配，token 经 `XIAOQIAO_TOKEN` 传入。
 - 页面通过 `tiny.api.call('gateway')` 拿到 `{url, token}`，第一帧必须发 `auth`。

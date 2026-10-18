@@ -87,7 +87,7 @@ misc:      listTools / previewPrompt / prompt / cancel / listSessions / ...
 
 ---
 
-## 桌面化（2026-10-18，M0–M3）
+## 桌面化（2026-10-18，M0–M4）
 
 方案见 [desktop-plan.md](desktop-plan.md)。M0 冒烟、M1 外壳、M2 稳定性、M3 原生集成已完成：
 
@@ -100,7 +100,9 @@ misc:      listTools / previewPrompt / prompt / cancel / listSessions / ...
 | M2 稳定性 | ✅ 启动画面与错误横幅（重试/日志/打开目录）、崩溃退避重启、`engine.log`、单实例、托盘 + 关窗隐藏 |
 | M2 R8 | ✅ `runtime/instance_lock.py`：回环 8760 端口当后台工作槽，抢不到即 passive（第二个引擎实测不启动调度器） |
 | M3 原生集成 | ✅ 应用菜单（探针实测三个 id 就位）、焦点时的审批/完成通知、拖放路径进输入框、文件夹选择器、系统主题同步 |
-| 回归 | ✅ pytest **203**、vitest **84**、ruff/pyright 干净、type-check 与两种 vite 构建通过 |
+| M4 独立运行时 | ✅ python-build-standalone 装在 esources/python，wheel 装进它自己的 site-packages；打包版引擎来自它（不再依赖本机 uv），冷启动 2.3 s |
+| 回归 | ✅ pytest **205**、vitest **84**、ruff/pyright 干净、type-check 与两种 vite 构建通过 |
 | 打包冒烟 | ✅ `tinyjs build` → `desktop/dist/xiaoqiao.exe` 能拉起引擎并完成鉴权；杀外壳后引擎退出、端口释放 |
 
-未做（按方案排期）：PyInstaller sidecar 与安装包（M4）、去端口化（M5）、中文输入法人工验收。
+未做（按方案排期）：安装包与自更新 manifest、去端口化（M5）、中文输入法人工验收。
+

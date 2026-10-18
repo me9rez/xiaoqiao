@@ -126,3 +126,45 @@ class TestShutdown:
             assert ack["result"] == {"ok": True}
         await asyncio.wait_for(task, timeout=5)
         assert task.done()
+
+
+class TestReadyFile:
+    """A windowed sidecar may have no usable stderr, so readiness is also a file."""
+
+    async def test_writes_the_bound_endpoint(self, tmp_path: Path) -> None:
+        ready = tmp_path / "endpoint.json"
+        server = WsGatewayServer(port=0, db_path=tmp_path / "agent.db", ready_file=ready)
+        task = asyncio.create_task(server.run_forever())
+        try:
+            for _ in range(250):
+                if server.port:
+                    break
+                await asyncio.sleep(0.02)
+            payload = json.loads(ready.read_text(encoding="utf-8"))
+            assert payload["url"] == f"ws://127.0.0.1:{server.port}"
+            assert payload["pid"] > 0
+        finally:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+    async def test_removed_on_graceful_shutdown(self, tmp_path: Path) -> None:
+        ready = tmp_path / "endpoint.json"
+        server = WsGatewayServer(port=0, db_path=tmp_path / "agent.db", ready_file=ready)
+        task = asyncio.create_task(server.run_forever())
+        for _ in range(250):
+            if server.port:
+                break
+            await asyncio.sleep(0.02)
+        assert ready.exists()
+
+        async with connect(f"ws://127.0.0.1:{server.port}") as ws:
+            await _recv(ws)
+            await ws.send(json.dumps({"id": "bye", "method": "shutdown", "params": {}}))
+            await _recv(ws)
+        await asyncio.wait_for(task, timeout=5)
+
+        # A stale endpoint file would send the next start to a dead port.
+        assert not ready.exists()

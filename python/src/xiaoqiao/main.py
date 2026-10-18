@@ -15,6 +15,7 @@ import os
 import subprocess
 import sys
 import threading
+import time
 from importlib import resources
 from pathlib import Path
 
@@ -71,6 +72,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--exit-on-stdin-eof",
         action="store_true",
         help="Exit when the parent closes stdin; the desktop shell keeps it open for its lifetime",
+    )
+    parser.add_argument(
+        "--ready-file",
+        default=None,
+        help='Write {"url", "pid"} here once listening (the shell reads it; a windowed build has no stderr)',
     )
     parser.add_argument("--web", action="store_true", help="Serve the web frontend static files")
     parser.add_argument("--web-port", type=int, default=8766, help="HTTP port for the web static server")
@@ -268,6 +274,10 @@ def _watch_stdin_eof(server: object) -> None:
                 stop()
             except Exception:
                 logger.warning("Could not stop the gateway on stdin EOF", exc_info=True)
+        # Graceful shutdown usually finishes well inside this window. If a turn
+        # refuses to unwind, leave nothing behind.
+        time.sleep(3)
+        os._exit(0)
 
     threading.Thread(target=_run, name="stdin-eof-watch", daemon=True).start()
 
@@ -277,6 +287,7 @@ async def _async_main(
     ws_port: int | None = None,
     auth_token: str | None = None,
     exit_on_stdin_eof: bool = False,
+    ready_file: str | None = None,
 ) -> None:
     loop = asyncio.get_running_loop()
     orig_handler = loop.get_exception_handler()
@@ -311,6 +322,7 @@ async def _async_main(
             skill_provider=skill_provider,
             mcp_tools=mcp_tools,
             auth_token=auth_token,
+            ready_file=ready_file,
         )
         if exit_on_stdin_eof:
             _watch_stdin_eof(server)
@@ -358,6 +370,7 @@ def main() -> None:
                     ws_port=desktop_port,
                     auth_token=token,
                     exit_on_stdin_eof=args.exit_on_stdin_eof,
+                    ready_file=args.ready_file,
                 )
             )
         except KeyboardInterrupt:
@@ -380,7 +393,7 @@ def main() -> None:
             print(f"Error: cannot start static server: {exc}", file=sys.stderr)
             sys.exit(1)
         try:
-            asyncio.run(_async_main(settings, ws_port=ws_port, auth_token=token))
+            asyncio.run(_async_main(settings, ws_port=ws_port, auth_token=token, ready_file=args.ready_file))
         except KeyboardInterrupt:
             pass
         return
@@ -388,7 +401,7 @@ def main() -> None:
     if args.ws_port is not None:
         _free_port(args.ws_port)
         try:
-            asyncio.run(_async_main(settings, ws_port=args.ws_port, auth_token=token))
+            asyncio.run(_async_main(settings, ws_port=args.ws_port, auth_token=token, ready_file=args.ready_file))
         except KeyboardInterrupt:
             pass
         return

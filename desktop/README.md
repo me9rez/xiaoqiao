@@ -12,8 +12,13 @@ desktop/
   assets/icon.png        # 应用图标
   src/backend/main.js    # api 面（gateway / engineStatus / restartEngine / appInfo / openDataDir）
   src/backend/engine.js  # 引擎子进程：spawn、就绪解析、崩溃重启、日志尾
+  resources/python/      # 独立 CPython + 已安装依赖（构建产物，gitignore）
   .build/frontend/       # pnpm 构建产物（gitignore）
 ```
+
+`resources/python` 是打包版的引擎来源：`uv python install` 下载的
+python-build-standalone（onedir），`xiaoqiao` 与依赖装进它自己的
+site-packages。开发模式不需要它。
 
 ## 开发
 
@@ -43,21 +48,23 @@ tinyjs dev
 ## 构建
 
 ```powershell
-cd desktop
-tinyjs build          # 产物在 desktop/dist/
+# 在仓库根目录：下载独立 Python → 装 wheel → tinyjs build
+.\scripts\build-desktop.ps1
 ```
 
-`tinyjs build` 调用 `tinyjs.json` 里的 `frontend.build`（`vite build --mode desktop`，
-把 URL 变成相对路径，`file://` 下才能加载），再把 `dist/` 打进应用。
+产物 `desktop/dist/`（约 136 MB，含 `resources/python`）。重复构建时加
+`-SkipRuntime` 复用已有运行时，只重建前端与应用。
+
+只跑 `tinyjs build` 也能出包，但 `resources/python` 不在时打包版会退回开发分支（依赖本机 `uv`）。
 
 ## 契约（改这里前先读）
 
 | 关注点 | 做法 |
 |---|---|
-| 端口 | 引擎用 `--ws-port 0` 让系统分配；外壳从 stderr 的 `WS READY ws://host:port` 读实际端口 |
+| 端口 | 引擎用 `--ws-port 0` 让系统分配；外壳从 `--ready-file` 写的 `{"url","pid"}` 读实际端口（stderr 的 `WS READY` 仍在，仅作兜底） |
 | 鉴权 | 外壳生成 24 字节随机 token，经环境变量 `XIAOQIAO_TOKEN` 传给引擎；页面连上后第一帧必须是 `{"method":"auth","params":{"token":…}}`，否则引擎回 `unauthorized` 并以 4401 关闭 |
 | 就绪语义 | `api.gateway()` **只在引擎真正监听后** resolve，页面不需要自己重试 |
-| 生命周期 | 外壳以 `stdin: "pipe"` 启动引擎，并传 `--exit-on-stdin-eof`；外壳死掉 → 管道 EOF → 引擎自行退出，不留孤儿进程 |
+| 生命周期 | 外壳以 `stdin: "pipe"` 启动引擎，并传 `--exit-on-stdin-eof`；外壳死掉 → 管道 EOF → 引擎自行退出（3 s 未退则看门狗硬退出），不留孤儿进程 |
 | 崩溃恢复 | 引擎非预期退出后按 1s/2s/4s 退避重启，最多 3 次，状态经 `engine-status` 推送 |
 | 数据目录 | 不变，仍是 `~/.xiaoqiao`，与 CLI 共享 bot / 会话 / 记忆 |
 | 托盘 | `app.tray.set(...)` 成功后才 `setHideOnClose(true)`：关窗=隐藏，引擎继续跑；菜单 = 显示 / 重启引擎 / 打开数据目录 / 退出。Linux 跳过（托盘依赖 libayatana） |
@@ -67,7 +74,7 @@ tinyjs build          # 产物在 desktop/dist/
 
 ## 已知缺口（按 `docs/desktop-plan.md` 的里程碑排期）
 
-- M4：PyInstaller sidecar（`executables/`）、安装包、自动更新
+- M4 剩余：安装包（MSI/NSIS 或 zip）与自更新 manifest（`tinyjs publish`）
 - 中文输入法（IME）人工验收
 - 图标目前是 64×64 放大到 1024×1024，正式发布前需要重绘
 
@@ -92,3 +99,4 @@ tinyjs build          # 产物在 desktop/dist/
 | 引擎连上又立刻断开 | token 不匹配；确认页面拿到的是 `api.gateway()` 返回的 token，而不是旧实例的 |
 | 日志里出现 `running in passive mode` | 另一个引擎（多半是 CLI）已经占着后台工作槽；当前实例只处理界面请求。想让桌面端接管，先退出那个进程 |
 | `engine did not report ready in time` | 看 `engine.log` 尾部；常见原因是 `uv` 不在 PATH，或 `python/` 依赖没 sync |
+

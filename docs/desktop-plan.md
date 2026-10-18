@@ -339,28 +339,26 @@ app.mount('#app')
 | 二次启动（双击图标） | macOS 上 launcher 是 LaunchServices 注册进程，文档明确它会收到 single-instance 激活；**Windows 行为未写明**，M0 实测。若不支持，则在 backend 里用 `tjs.listen` 占一个命名锁，第二次启动直接 `app.show()` 并退出 |
 | 机器重启后有未完成 Run | Python 侧现有逻辑（Run 落库）继续生效，页面显示「上次运行被中断」 |
 
-### 5.5 Python sidecar 打包
+### 5.5 Python 运行时打包（已按 onedir 落地）
 
-**选 PyInstaller onefile**，理由与取舍：
+**最终选择：python-build-standalone（onedir）+ 装进它自己的 site-packages**，不用 PyInstaller onefile。
 
-- PyInstaller 6.22.3 的 classifiers 已含 `Python :: 3.14`（本次实测），不必换运行时。
-- tinyjs 的 `executables/` 会把目录内的文件**压平**，onedir（含 `_internal/` 树）放不进去；onefile 是唯一零改造适配。
-- onefile 的代价是每次启动解包（~1–3 s）。缓解：启动画面 + 后台预热。若实测不可接受，退路是把 onedir 树放进 `resources/xiaoqiao-core/` 再 `spawn`（Windows/Linux 可行；macOS 需额外处理签名与 JIT entitlement）。
+- 运行时由 `uv python install -i desktop/resources/python 3.14` 下载（58 MB 裸解释器），摊平成固定路径 `resources/python/python.exe`。
+- 应用与依赖用 `uv pip install --python resources/python/python.exe <wheel>` 装进这个运行时；`uv` 会给独立解释器打 PEP 668 标记，构建脚本先删 `Lib/EXTERNALLY-MANAGED`。
+- tinyjs 的 `resources/` 会原样随包分发（与 `executables/` 不同，它保留目录结构），所以 onedir 树可以直接放进去，`spawn` 走 `paths.resources/python/python.exe`。
+- 实测：运行时 128 MB；冷启动到 ready **2.3 s**（PyInstaller onefile 需要先解包，慢且体积相近）；`stdin` 关闭后 0.1 s 内退出。
 
 ```powershell
-# scripts/build-desktop.ps1 的关键三段
-uv run --project python pyinstaller python/desktop/xiaoqiao-core.spec --noconfirm
-# 产物：desktop/executables/windows/xiaoqiao-core.exe
-pnpm --dir web build --outDir desktop/.build/frontend --emptyOutDir
-tinyjs build            # 出 desktop/dist/xiaoqiao/
+# 一条命令完成三步（scripts/build-desktop.ps1）
+.\scripts\build-desktop.ps1
+#   1. uv python install -i desktop/resources/python 3.14
+#   2. uv build + uv pip install --python resources/python/python.exe dist\xiaoqiao-*.whl
+#   3. tinyjs build → desktop/dist/
 ```
 
-`xiaoqiao-core.spec` 要点：
+打包后必须跑一次冒烟：`resources\python\python.exe -m xiaoqiao.main --desktop --ws-port 0 --ready-file <路径>` 能否写出 ready 文件并在 stdin 关闭后退出（`scripts` 之外可用 `%TEMP%` 下的临时脚本）。
 
-- `hiddenimports`：`agent_framework` 各 provider、`mcp`、`tzdata`（Windows 无 tz 数据库，已踩过）。
-- 排除：`tkinter`、`unittest`、`pytest`、`web_dist`（桌面端不需要内嵌前端）。
-- 体积预估 40–80 MB（待实测），是 tinyjs 6 MB 之外的不可避免成本。
-- 打包后必须跑一次冒烟：`xiaoqiao-core.exe --ws-port 0 --desktop` 能否正常吐 `WS READY`。
+> 早期版本用的是 PyInstaller onefile（`python/desktop/xiaoqiao-core.spec`）。实测两个问题：`agent_framework` 的懒加载 `__getattr__` 让静态分析漏模块（`agent_framework._harness._mode`），需要 `collect_submodules` 兜底；而且 onefile 每次启动都要解包。已删除该 spec，改用上面的 onedir 方案。
 
 ---
 
@@ -550,9 +548,26 @@ R8 需要单独强调：目前 `agent.db` 是单进程假设，桌面版让「CL
 - **菜单在 `tiny.menu`，不在 `tiny.app.menu`**。`tiny.app` 存在但 `tiny.app.menu` 是 `undefined`，写成后者是静默空操作（第一次探针就抓到 `exists:false`）。
 - 探针脚本走 `tinyjs.json` 的 `inject`，跑完必须删掉，否则每次启动都会 `tiny.quit()`。
 
-### 12.6 仍未做
+### 12.6 M4 已完成（独立运行时 + 打包）
 
-- M4：PyInstaller sidecar（现在打包版仍靠本机 `uv` 找引擎，只在开发机成立）、安装包、自更新
+| 项 | 做法 | 证据 |
+|---|---|---|
+| 运行时 | `uv python install -i desktop/resources/python 3.14`，摊平为 `resources/python/python.exe` | `python.exe --version` → 3.14.7；128 MB |
+| 应用与依赖 | `uv build` 出 wheel，`uv pip install --python resources/python/python.exe` 装进该运行时 | `import xiaoqiao.main, agent_framework, mcp, websockets, tzdata` 通过 |
+| 启动 | `engine.js` 优先用 `paths.resources/python/python.exe -m xiaoqiao.main` | `engine.log` 首行：`[shell] starting packaged engine: …dist/resources/python/python.exe`；引擎进程 exe 也指向该路径 |
+| 握手 | 新增 `--ready-file`：监听后原子写 `{"url","pid"}`，退出时删除；外壳按 pid 校验避免读到上次的陈旧文件 | 冷启动 2.3 s 写出 ready；stdin 关闭后 0.1 s 退出且 ready 文件已删除 |
+| 打包 | `scripts/build-desktop.ps1`（运行时 + wheel + `tinyjs build`），产物 `desktop/dist` 136 MB | `dist/resources/python/python.exe` 存在；应用启动后完成鉴权 |
+| 生命周期加固 | `request_stop()` 先删 ready 文件再停；stdin-EOF 看门狗 3 s 后硬退出，避免后台进程滞留 | 强制结束外壳后引擎最终退出，无残留端口 |
+
+踩坑记录：
+
+- PyInstaller onefile 的 `agent_framework.__getattr__` 懒加载会让静态分析漏模块（`agent_framework._harness._mode`），必须 `collect_submodules(..., on_error="ignore")`；`mcp` 不能用 `collect_submodules`（会拉进需要 `typer` 的 `mcp.cli`）。最终放弃 onefile，改 onedir。
+- `uv` 给独立解释器打 `Lib/EXTERNALLY-MANAGED`，装包前要删。
+- 用 `Stop-Process` 杀外壳时，tinyjs 的 tjs 后端会晚几秒才退，引擎 stdin EOF 因此滞后；正常「退出」路径没有这个延迟。测试脚本要按 15 s 量级等待。
+
+### 12.7 仍未做
+
+- 安装包（MSI/NSIS 或 zip）与自更新 manifest（`tinyjs publish`）
 - 中文输入法（IME）人工验收——自动化测不了
 - 图标仍是 64×64 放大到 1024×1024，正式发布前需重绘
 

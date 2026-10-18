@@ -1,4 +1,5 @@
 .build/
-executables/
 dist/
+executables/
 node_modules/
+resources/python/

@@ -45,9 +45,11 @@ async function resolveRepoRoot() {
 }
 
 async function resolveCommand(paths) {
-  const exe = paths?.executables ? `${paths.executables}/${IS_WIN ? 'xiaoqiao-core.exe' : 'xiaoqiao-core'}` : null
-  if (exe && (await fileExists(exe))) {
-    return { argv: [exe], cwd: paths?.data || tjs.cwd, mode: 'packaged' }
+  // Packaged: the app ships its own CPython plus the installed packages under
+  // resources/python (desktop-plan M4). Dev: run the repo checkout with uv.
+  const bundled = paths?.resources ? `${paths.resources}/python/${IS_WIN ? 'python.exe' : 'python'}` : null
+  if (bundled && (await fileExists(bundled))) {
+    return { argv: [bundled, '-m', 'xiaoqiao.main'], cwd: paths?.data || tjs.cwd, mode: 'packaged' }
   }
 
   const repo = await resolveRepoRoot()
@@ -125,10 +127,46 @@ export function createEngine({ onStatus } = {}) {
     else pendingResolve.forEach((fn) => fn(value))
   }
 
+  /** One place that accepts the handshake, whichever channel delivered it. */
+  function handleReady(url) {
+    if (endpoint || !url) return
+    endpoint = { url, token }
+    restarts = 0
+    console.log(`[shell] engine ready at ${url}`)
+    notify()
+    settle(endpoint)
+  }
+
+  /** Path the engine writes {"url","pid"} to once it is listening. */
+  function readyFilePath() {
+    const dir = logDir()
+    return dir ? `${dir}/engine.json` : null
+  }
+
+  /** A windowed sidecar may have no stderr, so also watch the ready file. */
+  async function pollReadyFile(childPid) {
+    const path = readyFilePath()
+    if (!path) return
+    for (let attempt = 0; attempt < 240 && !endpoint; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 250))
+      let payload = null
+      try {
+        const bytes = await tjs.readFile(path)
+        payload = JSON.parse(new TextDecoder().decode(bytes))
+      } catch {
+        continue
+      }
+      // Ignore a stale file from a previous run.
+      if (payload?.url && payload.pid === childPid) handleReady(payload.url)
+    }
+  }
+
   async function start() {
     const { argv, cwd, mode } = await resolveCommand(await safePaths())
     const fullArgs = [...argv, '--desktop', '--ws-port', '0', '--exit-on-stdin-eof']
     if (mode === 'dev') fullArgs.push('--log-level', 'INFO')
+    const readyPath = readyFilePath()
+    if (readyPath) fullArgs.push('--ready-file', readyPath)
 
     const env = { ...tjs.env, XIAOQIAO_TOKEN: token, PYTHONUNBUFFERED: '1' }
     logLine(`[shell] starting ${mode} engine: ${fullArgs.join(' ')}`)
@@ -141,17 +179,11 @@ export function createEngine({ onStatus } = {}) {
       stdout: 'pipe',
       stderr: 'pipe',
     })
+    const childPid = proc.pid
 
     void pumpLines(proc.stdout, (line) => {
       logLine(line)
-      if (line.startsWith(READY_PREFIX)) {
-        const url = line.slice(READY_PREFIX.length).trim()
-        endpoint = { url, token }
-        restarts = 0
-        console.log(`[shell] engine ready at ${url}`)
-        notify()
-        settle(endpoint)
-      }
+      if (line.startsWith(READY_PREFIX)) handleReady(line.slice(READY_PREFIX.length).trim())
     })
     void pumpLines(proc.stderr, (line) => {
       logLine(line)
@@ -160,15 +192,9 @@ export function createEngine({ onStatus } = {}) {
       if (/(WS READY|Client (connected|authenticated)|Rejected unauthenticated|Traceback|ERROR|Shutdown requested)/.test(line)) {
         console.log(`[engine] ${line}`)
       }
-      if (line.startsWith(READY_PREFIX)) {
-        const url = line.slice(READY_PREFIX.length).trim()
-        endpoint = { url, token }
-        restarts = 0
-        console.log(`[shell] engine ready at ${url}`)
-        notify()
-        settle(endpoint)
-      }
+      if (line.startsWith(READY_PREFIX)) handleReady(line.slice(READY_PREFIX.length).trim())
     })
+    if (readyPath) void pollReadyFile(childPid)
 
     notify()
     void proc.wait().then((code) => {

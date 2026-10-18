@@ -10,6 +10,7 @@ import asyncio
 import hmac
 import json
 import logging
+import os
 import sys
 import time
 from collections.abc import Awaitable, Callable
@@ -236,6 +237,7 @@ class WsGatewayServer:
         mcp_tools: list[Any] | None = None,
         auth_token: str | None = None,
         db_path: str | Path | None = None,
+        ready_file: str | Path | None = None,
     ) -> None:
         self._tools = tools or []
         self._settings = settings
@@ -243,6 +245,7 @@ class WsGatewayServer:
         self._port = port
         self._auth_token = auth_token
         self._db_path = db_path
+        self._ready_file = Path(ready_file) if ready_file else None
         self._stop_event = asyncio.Event()
         self._loop: asyncio.AbstractEventLoop | None = None
         self._slot: EngineSlot | None = None
@@ -1890,6 +1893,9 @@ class WsGatewayServer:
 
     def request_stop(self) -> None:
         """Ask ``run_forever`` to return. Safe to call from another thread."""
+        # Drop the endpoint first: from here on the port is going away, and a
+        # stale file would point the next start at a dead socket.
+        self._clear_ready_file()
         loop = self._loop
         if loop is not None and loop.is_running():
             loop.call_soon_threadsafe(self._stop_event.set)
@@ -1918,17 +1924,52 @@ class WsGatewayServer:
                 # so the desktop shell can hand it to the page.
                 self._port = _bound_port(server, self._port)
                 logger.info("WS gateway on ws://%s:%d", self._host, self._port)
-                print(f"WS READY ws://{self._host}:{self._port}", file=sys.stderr, flush=True)
+                self._publish_ready()
                 await self._stop_event.wait()
         finally:
             # Always give the slot back, including on cancellation, so a restart
             # in the same process (or the next test) can take it again.
+            # Ready file first: a stale endpoint would send the next start to a
+            # dead port.
+            self._clear_ready_file()
             logger.info("WS gateway stopped")
-            await self._scheduler.stop()
-            await self._stop_channels()
-            if self._slot is not None:
-                self._slot.release()
-                self._slot = None
+            try:
+                await self._scheduler.stop()
+                await self._stop_channels()
+            finally:
+                if self._slot is not None:
+                    self._slot.release()
+                    self._slot = None
+
+    def _publish_ready(self) -> None:
+        """Announce readiness on stderr *and* in a file, if one was requested.
+
+        The desktop shell reads the file, because stdout/stderr are not a
+        reliable channel for a spawned GUI-adjacent process.
+        """
+        url = f"ws://{self._host}:{self._port}"
+        try:
+            print(f"WS READY {url}", file=sys.stderr, flush=True)
+        except Exception:
+            pass
+        if self._ready_file is None:
+            return
+        payload = json.dumps({"url": url, "pid": os.getpid()}, ensure_ascii=False)
+        temporary = self._ready_file.with_name(f"{self._ready_file.name}.tmp")
+        try:
+            self._ready_file.parent.mkdir(parents=True, exist_ok=True)
+            temporary.write_text(payload, encoding="utf-8")
+            temporary.replace(self._ready_file)
+        except OSError:
+            logger.warning("Could not write ready file %s", self._ready_file, exc_info=True)
+
+    def _clear_ready_file(self) -> None:
+        if self._ready_file is None:
+            return
+        try:
+            self._ready_file.unlink(missing_ok=True)
+        except OSError:
+            logger.debug("Could not remove ready file %s", self._ready_file, exc_info=True)
 
 
 def _bound_port(server: Any, fallback: int) -> int:
