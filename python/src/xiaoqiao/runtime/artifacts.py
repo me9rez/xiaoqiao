@@ -35,6 +35,9 @@ IGNORED_DIRS = {
 
 MAX_FILES = 50
 MAX_FILE_BYTES = 50 * 1024 * 1024
+#: How far before the run's start timestamp to look. Guards against filesystem
+#: mtime granularity making a just-written file look older than the run.
+MTIME_TOLERANCE_SECONDS = 1.0
 
 
 @dataclass(frozen=True)
@@ -147,11 +150,17 @@ class ArtifactRepository:
         since: datetime,
         run_id: str | None = None,
     ) -> list[Artifact]:
-        """Index files modified at/after ``since``; returns only newly indexed ones."""
+        """Index files modified at/after ``since``; returns only newly indexed ones.
+
+        The cutoff is pulled back by :data:`MTIME_TOLERANCE_SECONDS`: a file written
+        in the same instant the run started can come back from ``stat`` with an mtime
+        a hair earlier than the Python-side timestamp (filesystem granularity vs.
+        float conversion), which made the scan miss the files the turn just produced.
+        """
         root = Path(workspace)
         if not root.is_dir():
             return []
-        cutoff = since.timestamp()
+        cutoff = since.timestamp() - MTIME_TOLERANCE_SECONDS
         discovered: list[Artifact] = []
         for current, dirs, files in os.walk(root):
             dirs[:] = [name for name in dirs if name not in IGNORED_DIRS and not name.startswith(".")]
