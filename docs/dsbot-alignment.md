@@ -209,7 +209,7 @@ vitest 102、pytest **282**、`pnpm build-only` 通过。
 | 定时任务 | `N 个` 或「去添加 ›」→ `/routines` | `useRoutinesStore` 按 botId 过滤 |
 
 原有的「进度 / 工作区 / 产物 / 操作记录」四段保留在下面，没有为了对齐而删功能。
-未做：参考实现的 `详情 | 浏览器` 页签（浏览器子面板依赖 dsh 的 browser 插件，见 §7）、「缓存命中 %」（`UsageTotals` 没有 cache token 字段，需 M5 补）。
+未做：参考实现的 `详情 | 浏览器` 页签（浏览器子面板依赖 dsh 的 browser 插件，见 §7）；「缓存命中 %」已在 M5 补上。
 
 回归：`vue-tsc --build` 0 错误、vitest 102、Chromium 截图核对。
 
@@ -231,7 +231,7 @@ vitest 102、pytest **282**、`pnpm build-only` 通过。
 
 `usageSummary` 新增 `byBot` 与 `byDay`；页面改成团队视角（不再按 `activeBot` 过滤），RPC 仍支持 `botId`。
 
-未做：参考的「缓存命中率」KPI——`UsageTotals` 没有 cache token 字段（M5 补）。
+「缓存命中率」KPI 在 M5 补上（见 §5 的 M5 表）。
 
 ### M5 后端补齐（进行中，2026-10-18）
 
@@ -241,7 +241,7 @@ vitest 102、pytest **282**、`pnpm build-only` 通过。
 | bot 职位/简介 | ✅ 数据类 → 行映射 → 序列化 → `create`/`update` → `createBot`/`updateBot` → TS 类型 → 侧栏副标题与详情抽屉 → Bot 编辑器输入框 |
 | 群管理员 | ✅ 语义本来就在：`resolve_recipients()` 用 `default_bot_id` 决定谁应答并派活。**没有新增列**，而是把它按产品叫法暴露成 `adminBotId`（同一值），`updateGroup` 接受 `adminBotId`，群行副标题显示「管理员 X · 成员」，群内作者徽标改读它。3 项测试 |
 | 未读计数 | ⬜ 未做 |
-| `UsageTotals` 的 cache token | ⬜ 未做（用量页的「缓存命中率」KPI 卡在等它） |
+| `UsageTotals` 的 cache token | ✅ schema v4 给 `usage_events` 加 `cache_read_tokens`；`record()`/`summary()` 带它，三条 run 路径都传 `event.cache_read_tokens`；`usageSummary` 输出 `cacheReadTokens`；用量页第二张 KPI 卡改「缓存命中率」（命中 = cacheRead / (input + cacheRead)），输出挪进 token 卡副标题 |
 | 能力 per-bot 启用 + 主 Bot 权限 | ⬜ 未做 |
 
 ---
