@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import difflib
+import fnmatch
 import json
 import logging
 import os
@@ -54,16 +55,20 @@ def _ensure_data_dir() -> Path:
 
 
 def _get_approval_mode(tool_name: str, approval_config: dict[str, Any]) -> ApprovalMode | None:
-    """Determine the approval mode for a tool based on configuration."""
+    """Determine the approval mode for a tool based on configuration.
+
+    Patterns may be exact tool names or prefix globs (``mcp__github__*``), the
+    same matching the permission rules in ``config.toml`` use.
+    """
     if not approval_config.get("enabled", True):
         return None
 
-    always_require = set(approval_config.get("always_require", _DEFAULT_ALWAYS_REQUIRE))
-    never_require = set(approval_config.get("never_require", []))
+    always_require = approval_config.get("always_require", _DEFAULT_ALWAYS_REQUIRE)
+    never_require = approval_config.get("never_require", [])
 
-    if tool_name in never_require:
+    if any(fnmatch.fnmatchcase(tool_name, pattern) for pattern in never_require):
         return None
-    if tool_name in always_require:
+    if any(fnmatch.fnmatchcase(tool_name, pattern) for pattern in always_require):
         mode: ApprovalMode = "always_require"
         return mode
     return None
@@ -486,24 +491,23 @@ async def _http_fetch(
 
 
 async def _web_search(query: str, count: int = 8, market: str = "zh-CN") -> str:
-    """Search the web using a configured search provider."""
+    """Search the web using the provider configured in ``[services.web_search]``."""
     try:
-        settings_path = _DATA_DIR / "settings.json"
-        settings = json.loads(settings_path.read_text(encoding="utf-8")) if settings_path.exists() else {}
+        from xiaoqiao.settings import load as load_settings
 
-        search_config = settings.get("webSearch", {})
-        provider = search_config.get("provider", "bing")
-        api_key = search_config.get("apiKey", "")
+        service = load_settings().services.get("web_search")
+        provider = (service.provider if service else "") or "bing"
+        api_key = service.api_key if service else ""
+        base_url = service.base_url if service else ""
 
         if not api_key:
-            return "Error: No search API key configured. Please set webSearch.apiKey in ~/.xiaoqiao/settings.json"
+            return "Error: No search API key configured. Set [services.web_search] api_key in ~/.xiaoqiao/config.toml"
 
         if provider == "bing":
             return await _bing_search(query, api_key, count, market)
         elif provider == "searxng":
-            base_url = search_config.get("baseUrl", "")
             if not base_url:
-                return "Error: No SearXNG URL configured. Set webSearch.baseUrl in settings."
+                return "Error: No SearXNG URL configured. Set [services.web_search] base_url in config.toml."
             return await _searxng_search(query, base_url, count)
         else:
             return f"Error: Unknown search provider '{provider}'. Supported: bing, searxng"

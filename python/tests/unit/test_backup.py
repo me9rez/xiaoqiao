@@ -16,7 +16,8 @@ def live_state(tmp_path: Path) -> Path:
     source = tmp_path / "state"
     source.mkdir()
     BotRepository(source / "agent.db").create("Coder")
-    (source / "settings.json").write_text('{"max_turns": 5}', encoding="utf-8")
+    (source / "config.toml").write_text('default_model = "deepseek/deepseek-v4"\n', encoding="utf-8")
+    (source / "mcp.json").write_text('{"mcpServers": {}}\n', encoding="utf-8")
     sessions = source / "sessions"
     sessions.mkdir()
     (sessions / "s1.jsonl").write_text("", encoding="utf-8")
@@ -24,11 +25,18 @@ def live_state(tmp_path: Path) -> Path:
 
 
 class TestBackup:
-    def test_copies_database_settings_and_sessions(self, live_state: Path, tmp_path: Path) -> None:
+    def test_copies_database_config_and_sessions(self, live_state: Path, tmp_path: Path) -> None:
         created = create_backup(tmp_path / "backups", source=live_state)
 
-        assert set(created) == {"database", "sessions", "settings.json"}
+        assert set(created) == {"database", "sessions", "config.toml", "mcp.json"}
         assert Path(created["database"]).is_file()
+        assert "deepseek/deepseek-v4" in Path(created["config.toml"]).read_text(encoding="utf-8")
+
+    def test_unmigrated_settings_json_is_still_copied(self, live_state: Path, tmp_path: Path) -> None:
+        (live_state / "settings.json").write_text('{"max_turns": 5}', encoding="utf-8")
+
+        created = create_backup(tmp_path / "backups", source=live_state)
+
         assert Path(created["settings.json"]).read_text(encoding="utf-8") == '{"max_turns": 5}'
 
     def test_backup_database_is_usable(self, live_state: Path, tmp_path: Path) -> None:

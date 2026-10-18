@@ -11,6 +11,7 @@ from agent_framework._tools import SKIP_PARSING, FunctionTool
 from agent_framework._types import AgentResponseUpdate, Content, UsageDetails
 
 from xiaoqiao.agent_runtime import AgentRuntime, dispatch_update
+from xiaoqiao.config.schema import ModelSettings, ProviderSettings, Settings
 from xiaoqiao.events import (
     TextDeltaEvent,
     ThinkingDeltaEvent,
@@ -19,7 +20,6 @@ from xiaoqiao.events import (
     ToolExecutionStartEvent,
     UsageEvent,
 )
-from xiaoqiao.settings import Settings
 from xiaoqiao.tool_events import ToolEventMiddleware, extract_tool_result
 from xiaoqiao.tools.coding_tools import _ToolResult
 
@@ -34,9 +34,18 @@ class _StubClient:
 
 
 def _settings_with(context: int = 200_000, output: int = 8_000) -> Settings:
-    settings = Settings(primary_model="deepseek/test")
-    settings.providers["deepseek"]["models"] = [{"id": "test", "contextWindow": context, "maxTokens": output}]
-    return settings
+    return Settings(
+        default_model="deepseek/test",
+        providers={"deepseek": ProviderSettings(type="openai", base_url="https://api.deepseek.com/v1")},
+        models={
+            "deepseek/test": ModelSettings(
+                provider="deepseek",
+                model="test",
+                max_context_size=context,
+                max_output_size=output,
+            )
+        },
+    )
 
 
 def _build_runtime(settings: Settings | None = None) -> AgentRuntime:

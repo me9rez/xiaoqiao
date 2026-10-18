@@ -19,6 +19,7 @@ dependencies = [
     # too, otherwise resolution picks mcp 2.x and every MCP server fails to connect.
     "mcp>=1.21.1,<2",
     # Windows ships no system tz database; routines need IANA zones.
+    "tomlkit>=0.15.2",
     "tzdata>=2025.2",
     "websockets>=15.0",
 ]

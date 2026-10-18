@@ -70,7 +70,7 @@ from xiaoqiao.session import (
     start_session_run,
     update_session,
 )
-from xiaoqiao.settings import Settings, _split_selected_model, build_client, thinking_level
+from xiaoqiao.settings import Settings, apply_update, build_client, effective_effort, split_alias, to_wire
 from xiaoqiao.settings import load as load_settings
 from xiaoqiao.settings import save as save_settings
 from xiaoqiao.skills import (
@@ -499,38 +499,15 @@ class WsGatewayServer:
                         self._send_rpc_error(request_id, str(exc))
                 elif method == "getSettings":
                     try:
-                        s = load_settings()
-                        self._send_rpc_response(
-                            request_id,
-                            {
-                                "primaryModel": s.primary_model,
-                                "providers": s.providers,
-                                "max_turns": s.max_turns,
-                            },
-                        )
+                        self._send_rpc_response(request_id, to_wire(load_settings()))
                     except Exception as exc:
                         logger.exception("getSettings failed")
                         self._send_rpc_error(request_id, str(exc))
                 elif method == "updateSettings":
                     try:
-                        s = load_settings()
-                        if "primaryModel" in params:
-                            s.primary_model = params["primaryModel"]
-                        if "selectedModel" in params:
-                            s.primary_model = params["selectedModel"]
-                        if "providers" in params:
-                            s.providers = params["providers"]
-                        if "max_turns" in params:
-                            s.max_turns = params["max_turns"]
+                        s = apply_update(load_settings(), params)
                         save_settings(s)
-                        self._send_rpc_response(
-                            request_id,
-                            {
-                                "primaryModel": s.primary_model,
-                                "providers": s.providers,
-                                "max_turns": s.max_turns,
-                            },
-                        )
+                        self._send_rpc_response(request_id, to_wire(s))
                     except Exception as exc:
                         logger.exception("updateSettings failed")
                         self._send_rpc_error(request_id, str(exc))
@@ -706,8 +683,8 @@ class WsGatewayServer:
                                 },
                                 "byModel": self._usage.by_model(since=since, bot_id=bot_id),
                                 "budget": {
-                                    "dailyTokens": int(getattr(self._settings, "daily_token_budget", 0) or 0),
-                                    "dailyUsd": float(getattr(self._settings, "daily_budget_usd", 0.0) or 0.0),
+                                    "dailyTokens": self._limits().daily_token_budget,
+                                    "dailyUsd": self._limits().daily_budget_usd,
                                 },
                             },
                         )
@@ -1195,7 +1172,7 @@ class WsGatewayServer:
 
         # Resolve the bot first: persona, model and workspace all come from it.
         settings = self._settings if isinstance(self._settings, Settings) else None
-        primary_model = getattr(settings, "primary_model", "") if settings else ""
+        primary_model = settings.default_model if settings else ""
         bot = self._bots.get(bot_id) if bot_id else self._bots.ensure_default()
         if bot is None:
             self._emit(ErrorEvent(message=f"Bot not found: {bot_id}", recoverable=False))
@@ -1242,12 +1219,12 @@ class WsGatewayServer:
                 memory_block=self._memory.build_block(bot.id, query=text),
                 project_context=ctx,
                 mcp_tools_prompt=mcp_tools_prompt,
-                tool_approval=getattr(settings, "tool_approval", None),
+                tool_approval=settings.approval_config() if settings else None,
             )
         )
 
         error_occurred = False
-        approval_enabled = bool(getattr(settings, "tool_approval", {}).get("enabled", True))
+        approval_enabled = settings.permission.enabled if settings else True
         run_id = self._runs.begin(bot.id, trigger="web")
 
         def _on_event(event: AgentEvent) -> None:
@@ -1267,8 +1244,8 @@ class WsGatewayServer:
             self._emit(event, session_id=session.id, run_id=run_id)
 
         try:
-            provider_id, model_id = _split_selected_model(session_model)
-            lvl = thinking_level(settings, session_model) if settings else None
+            provider_id, model_id = split_alias(session_model)
+            lvl = effective_effort(settings, session_model) if settings else None
             options = thinking_options_for_model(lvl, provider_id, model_id)
             client = self._client_for(session_model)
 
@@ -1352,7 +1329,7 @@ class WsGatewayServer:
                 memory_block=self._memory.build_block(bot.id, query=query),
                 project_context=discover_project_context(bot.workspace or None),
                 mcp_tools_prompt=format_mcp_tools_for_prompt(self._mcp_tools),
-                tool_approval=getattr(settings, "tool_approval", None),
+                tool_approval=settings.approval_config() if settings else None,
             )
         )
 
@@ -1382,7 +1359,7 @@ class WsGatewayServer:
         settings = self._settings if isinstance(self._settings, Settings) else None
         if settings is None:
             return None
-        limit = int(getattr(settings, "max_requests_per_minute", 0) or 0)
+        limit = settings.limits.max_requests_per_minute
         if limit <= 0:
             return None
         now = time.monotonic()
@@ -1394,13 +1371,20 @@ class WsGatewayServer:
         self._rate_window[bot_id] = window
         return None
 
+    def _limits(self) -> Any:
+        """Daily caps from ``[limits]`` (or the defaults when unconfigured)."""
+        from xiaoqiao.config.schema import LimitsSettings
+
+        settings = self._settings if isinstance(self._settings, Settings) else None
+        return settings.limits if settings else LimitsSettings()
+
     def _budget_error(self) -> str | None:
         """Return a reason when today's usage is already over the configured budget."""
         settings = self._settings if isinstance(self._settings, Settings) else None
         if settings is None:
             return None
-        token_budget = int(getattr(settings, "daily_token_budget", 0) or 0)
-        usd_budget = float(getattr(settings, "daily_budget_usd", 0.0) or 0.0)
+        token_budget = settings.limits.daily_token_budget
+        usd_budget = settings.limits.daily_budget_usd
         if token_budget <= 0 and usd_budget <= 0:
             return None
         try:
@@ -1624,7 +1608,7 @@ class WsGatewayServer:
         )
 
         settings = self._settings if isinstance(self._settings, Settings) else None
-        primary_model = getattr(settings, "primary_model", "") if settings else ""
+        primary_model = settings.default_model if settings else ""
         session_model = session.model or bot.model or primary_model
         budget_reason = self._budget_error()
         if budget_reason is not None:
@@ -1642,12 +1626,12 @@ class WsGatewayServer:
                 memory_block=self._memory.build_block(bot.id, query=self._last_user_text(messages)),
                 project_context=ctx,
                 mcp_tools_prompt=format_mcp_tools_for_prompt(self._mcp_tools),
-                tool_approval=getattr(settings, "tool_approval", None),
+                tool_approval=settings.approval_config() if settings else None,
             )
         )
 
-        provider_id, model_id = _split_selected_model(session_model)
-        level = thinking_level(settings, session_model) if settings else None
+        provider_id, model_id = split_alias(session_model)
+        level = effective_effort(settings, session_model) if settings else None
         options = thinking_options_for_model(level, provider_id, model_id)
         client = self._client_for(session_model)
 
@@ -1675,7 +1659,7 @@ class WsGatewayServer:
             sys_prompt,
             options,
             settings,
-            bool(getattr(settings, "tool_approval", {}).get("enabled", True)) if settings else True,
+            settings.permission.enabled if settings else True,
             tools=self._tools_for(bot),
         )
         run_started = datetime.now(UTC)

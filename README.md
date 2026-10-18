@@ -26,28 +26,30 @@ uv tool install xiaoqiao
 
 ### Configure
 
-Create `~/.xiaoqiao/settings.json`:
+The first run writes `~/.xiaoqiao/config.toml` for you (same shape as Kimi Code CLI's
+`config.toml`). The minimal useful config is just a key:
 
-```json
-{
-  "selectedModel": "deepseek/deepseek-v4-flash",
-  "providers": {
-    "deepseek": {
-      "baseUrl": "https://api.deepseek.com/v1",
-      "apiKey": "sk-xxx",
-      "models": [
-        {
-          "id": "deepseek-v4-flash",
-          "name": "DeepSeek V4 Flash",
-          "contextWindow": 1000000,
-          "maxTokens": 384000
-        }
-      ]
-    }
-  },
-  "max_turns": 25
-}
+```toml
+default_model = "deepseek/deepseek-v4-flash"
+
+[providers.deepseek]
+type = "openai"
+base_url = "https://api.deepseek.com/v1"
+api_key = "sk-xxx"
+
+[models."deepseek/deepseek-v4-flash"]
+provider = "deepseek"
+model = "deepseek-v4-flash"
+max_context_size = 128000
+max_output_size = 8000
+capabilities = ["thinking", "tool_use"]
+support_efforts = ["high", "max"]
+default_effort = "max"
 ```
+
+You can also keep the key out of the file with `api_key_env = "DEEPSEEK_API_KEY"`.
+`XIAOQIAO_HOME` overrides the data directory. A legacy `settings.json` is migrated
+on first start and the original file is left in place.
 
 ### Run
 

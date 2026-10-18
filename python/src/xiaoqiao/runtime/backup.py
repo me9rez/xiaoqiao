@@ -19,7 +19,9 @@ from xiaoqiao.paths import config_dir
 logger = logging.getLogger(__name__)
 
 _EXTRA_DIRS = ("sessions", "framework_sessions")
-_EXTRA_FILES = ("settings.json",)
+#: ``config.toml`` is authoritative; ``mcp.json`` holds server definitions and
+#: ``settings.json`` is only present on installs that have not migrated yet.
+_EXTRA_FILES = ("config.toml", "mcp.json", "settings.json")
 
 
 def create_backup(dest: str | Path, *, source: str | Path | None = None) -> dict[str, str]:

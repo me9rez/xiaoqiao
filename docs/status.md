@@ -100,9 +100,35 @@ misc:      listTools / previewPrompt / prompt / cancel / listSessions / ...
 | M2 稳定性 | ✅ 启动画面与错误横幅（重试/日志/打开目录）、崩溃退避重启、`engine.log`、单实例、托盘 + 关窗隐藏 |
 | M2 R8 | ✅ `runtime/instance_lock.py`：回环 8760 端口当后台工作槽，抢不到即 passive（第二个引擎实测不启动调度器） |
 | M3 原生集成 | ✅ 应用菜单（探针实测三个 id 就位）、焦点时的审批/完成通知、拖放路径进输入框、文件夹选择器、系统主题同步 |
-| M4 独立运行时 | ✅ python-build-standalone 装在 esources/python，wheel 装进它自己的 site-packages；打包版引擎来自它（不再依赖本机 uv），冷启动 2.3 s |
+| M4 独立运行时 | ✅ python-build-standalone 装在 
+esources/python，wheel 装进它自己的 site-packages；打包版引擎来自它（不再依赖本机 uv），冷启动 2.3 s |
 | 回归 | ✅ pytest **205**、vitest **84**、ruff/pyright 干净、type-check 与两种 vite 构建通过 |
 | 打包冒烟 | ✅ `tinyjs build` → `desktop/dist/xiaoqiao.exe` 能拉起引擎并完成鉴权；杀外壳后引擎退出、端口释放 |
 
 未做（按方案排期）：安装包与自更新 manifest、去端口化（M5）、中文输入法人工验收。
+
+---
+
+## 配置格式迁移（2026-10-18，config.toml）
+
+方案见 [config-toml-plan.md](config-toml-plan.md)。运行配置由 `~/.xiaoqiao/settings.json` 改为
+`~/.xiaoqiao/config.toml`（结构对齐 Kimi Code CLI），MCP server 定义拆到 `mcp.json`。
+
+| 项 | 状态 |
+|---|---|
+| 结构 | ✅ `default_model` + `[providers.*]` + `[models."<alias>"]` + `[thinking]` + `[loop_control]` + `[limits]` + `[[permission.rules]]` + `[services.web_search]` |
+| 读 | ✅ stdlib `tomllib`；逐字段容错（类型错只回落该字段并告警） |
+| 写 | ✅ `tomlkit` 增量改写：只改动变化的键，注释/顺序/未知节保留，`os.replace` 原子替换 |
+| 迁移 | ✅ 七类历史输入（provider/model、snake_case、`selectedModel`、最老扁平版、`mcpServers`、`webSearch`、无配置）；迁移后**保留** `settings.json` |
+| 数据目录 | ✅ `XIAOQIAO_HOME` 覆盖；路径改为惰性求值（原先在 import 期冻结，测试只能 patch 模块变量） |
+| RPC | ✅ `getSettings`/`updateSettings` 改 snake_case（与文件同一套词汇），旧 camelCase 入参保留兼容 shim |
+| MCP | ✅ 定义移到 `mcp.json`，`type` 改为字段存在性判别（`command` / `url` / `transport = "sse"`），旧 `type` 仍可读 |
+| 顺带修复 | ✅ 删除无消费者的 `workflowLoop`；`coding_tools._web_search` 不再自读 JSON，改走 `[services.web_search]`；`gateway/server.py` 的 effort 取值不再恒为空串 |
+| 回归 | ✅ pytest **247**、vitest **84**、ruff/pyright 干净、`pnpm type-check` 与两种 vite 构建通过 |
+| CLI | ✅ `xiaoqiao config path`（打印 config.toml/mcp.json 真实路径）与 `xiaoqiao config show`（输出解析后的值，api_key 打码） |
+| 端到端 | ✅ 起真实网关连 WS：旧 `settings.json` 自动迁移 → `getSettings` 返回新词汇 → `updateSettings` 只改 `default_model` 一行 → 文件其余内容与注释不变 |
+
+未做（方案 §12 明示）：Kimi 的 `managed:` 供应商 / OAuth / `secondary_model` / `hooks` / `background` /
+`database` / `watch` / `tui.toml` / 项目级 `local.toml`；`anthropic` 客户端分派留作后续。
+
 

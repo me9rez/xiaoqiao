@@ -46,28 +46,84 @@ export interface SessionData {
   estimatedCostUsd: number
 }
 
-export interface ModelConfig {
-  id: string
-  name: string
-  contextWindow?: number
-  maxTokens?: number
-  reasoning?: boolean
-  thinking_level?: string[]
-  input?: string[]
+/**
+ * Configuration types.
+ *
+ * The wire shape mirrors `~/.xiaoqiao/config.toml` exactly (snake_case, models
+ * keyed by alias), so there is only one vocabulary for a setting end to end.
+ */
+export interface ModelEntry {
+  provider: string
+  model: string
+  max_context_size: number
+  max_input_size?: number | null
+  max_output_size?: number | null
+  capabilities: string[]
+  support_efforts: string[]
+  default_effort?: string | null
+  display_name?: string | null
+  reasoning_key?: string | null
 }
 
 export interface ProviderConfig {
-  api?: string
-  baseUrl?: string
-  apiKey?: string
-  enabled?: boolean
-  models: ModelConfig[]
+  type: string
+  base_url: string
+  api_key: string
+  api_key_env?: string | null
+  env?: Record<string, string>
+  custom_headers?: Record<string, string>
+}
+
+export interface ThinkingConfig {
+  enabled: boolean
+  effort?: string | null
+  keep?: string | null
+}
+
+export interface LoopControlConfig {
+  max_steps_per_turn: number
+  max_attempts_per_step: number
+  reserved_context_size?: number | null
+  compaction_max_attempts: number
+}
+
+export interface LimitsConfig {
+  daily_token_budget: number
+  daily_budget_usd: number
+  max_requests_per_minute: number
+}
+
+export type PermissionDecision = 'allow' | 'deny' | 'ask'
+
+export interface PermissionRule {
+  decision: PermissionDecision
+  pattern: string
+  reason?: string | null
+  scope?: string | null
+}
+
+export interface PermissionConfig {
+  mode: 'manual' | 'yolo' | 'auto'
+  dangerous_command_guard: boolean
+  rules: PermissionRule[]
+}
+
+export interface ServiceConfig {
+  base_url: string
+  api_key: string
+  provider?: string
+  custom_headers?: Record<string, string>
 }
 
 export interface Settings {
-  primaryModel: string
+  default_model: string
   providers: Record<string, ProviderConfig>
-  max_turns: number
+  models: Record<string, ModelEntry>
+  thinking: ThinkingConfig
+  loop_control: LoopControlConfig
+  limits: LimitsConfig
+  permission: PermissionConfig
+  services: Record<string, ServiceConfig>
 }
 
 export type MessageRole = 'user' | 'assistant' | 'system' | 'tool'

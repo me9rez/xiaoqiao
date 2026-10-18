@@ -10,8 +10,8 @@ from typing import Any, cast
 import pytest
 
 from xiaoqiao.agent_runtime import PendingApproval
+from xiaoqiao.config.schema import LimitsSettings, Settings
 from xiaoqiao.gateway.ws_server import WsGatewayServer
-from xiaoqiao.settings import Settings
 
 
 @pytest.fixture
@@ -126,13 +126,13 @@ class FakeAdapter:
 class TestRunRecords:
     def test_rate_limit_blocks_after_the_cap(self, server: WsGatewayServer) -> None:
         coder = server._bots.create("Coder", slug="coder")
-        server._settings = Settings(max_requests_per_minute=2)
+        server._settings = Settings(limits=LimitsSettings(max_requests_per_minute=2))
 
         assert server._rate_error(coder.id) is None
         assert server._rate_error(coder.id) is None
         assert server._rate_error(coder.id) is not None
 
-        server._settings = Settings(max_requests_per_minute=0)
+        server._settings = Settings(limits=LimitsSettings(max_requests_per_minute=0))
         assert server._rate_error(coder.id) is None
 
     def test_preview_prompt_includes_persona(self, server: WsGatewayServer) -> None:
@@ -163,13 +163,13 @@ class TestRunRecords:
 
     def test_budget_gate_blocks_when_exceeded(self, server: WsGatewayServer) -> None:
         coder = server._bots.create("Coder", slug="coder")
-        server._settings = Settings(daily_token_budget=100)
+        server._settings = Settings(limits=LimitsSettings(daily_token_budget=100))
         server._usage.record(coder.id, "m", input_tokens=200)
 
         assert server._budget_error() is not None
 
         server._usage.record(coder.id, "m", input_tokens=1)
-        server._settings = Settings(daily_token_budget=10_000)
+        server._settings = Settings(limits=LimitsSettings(daily_token_budget=10_000))
         assert server._budget_error() is None
 
     def test_session_memory_is_recorded(self, server: WsGatewayServer) -> None:

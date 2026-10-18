@@ -1,32 +1,34 @@
-"""Settings management — reads/writes ~/.xiaoqiao/settings.json.
+"""Settings facade — reads/writes ``~/.xiaoqiao/config.toml``.
 
-Configuration now follows a provider/model layout similar to openclaw.json:
+The on-disk format mirrors Kimi Code CLI's ``config.toml``:
 
-    {
-      "primaryModel": "deepseek/deepseek-v4-flash",
-      "providers": {
-        "deepseek": {
-          "api": "openai-completions",
-          "baseUrl": "https://api.deepseek.com/v1",
-          "apiKey": "...",
-          "models": [
-            {
-              "id": "deepseek-v4-flash",
-              "name": "DeepSeek V4 Flash",
-              "contextWindow": 128000,
-              "maxTokens": 8000,
-              "reasoning": true,
-              "thinking_level": ["high", "max"],
-              "input": ["text"]
-            }
-          ]
-        }
-      },
-      "max_turns": 25
-    }
+    default_model = "deepseek/deepseek-v4-flash"
 
-Legacy top-level ``model/base_url/api_key/thinking_level/max_*_tokens`` fields are
-migrated automatically.
+    [providers.deepseek]
+    type = "openai"
+    base_url = "https://api.deepseek.com/v1"
+    api_key_env = "DEEPSEEK_API_KEY"
+
+    [models."deepseek/deepseek-v4-flash"]
+    provider = "deepseek"
+    model = "deepseek-v4-flash"
+    max_context_size = 128000
+    max_output_size = 8000
+
+    [loop_control]
+    max_steps_per_turn = 25
+
+    [[permission.rules]]
+    decision = "ask"
+    pattern = "run_command"
+
+Everything that used to import this module keeps working: :func:`load`,
+:func:`save`, :func:`build_client`, :func:`model_config`, :func:`resolve_api_key`
+and :func:`effective_effort` are the supported surface.  A legacy
+``settings.json`` is converted once, on first load, and then left in place so an
+older install can still start.
+
+See ``docs/config-toml-plan.md`` for the full field mapping.
 """
 
 from __future__ import annotations
@@ -34,245 +36,167 @@ from __future__ import annotations
 import json
 import logging
 import os
-from dataclasses import dataclass, field
+import tomllib
+from collections.abc import Mapping
+from dataclasses import asdict
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, ClassVar
 
-from xiaoqiao.paths import config_dir
+from xiaoqiao.config.migrate import migrate_legacy_settings
+from xiaoqiao.config.reader import (
+    limits_from_mapping,
+    loop_control_from_mapping,
+    model_from_mapping,
+    permission_from_mapping,
+    provider_from_mapping,
+    services_from_mapping,
+    settings_from_mapping,
+    thinking_from_mapping,
+)
+from xiaoqiao.config.schema import (
+    DEFAULT_MODEL,
+    ModelSettings,
+    ProviderSettings,
+    Settings,
+    split_alias,
+)
+from xiaoqiao.config.writer import write_config
+from xiaoqiao.paths import config_path, legacy_settings_path
 
 logger = logging.getLogger(__name__)
 
-_SETTINGS_DIR = config_dir()
-_SETTINGS_PATH = _SETTINGS_DIR / "settings.json"
+#: Kept for callers that still import the private helper.
+_split_selected_model = split_alias
+
+_ENV_FALLBACK_VARS = ("DEEPSEEK_API_KEY", "OPENAI_API_KEY")
+_env_fallback_warned = False
 
 
-def _default_providers() -> dict[str, Any]:
-    return {
-        "deepseek": {
-            "api": "openai-completions",
-            "baseUrl": "https://api.deepseek.com/v1",
-            "apiKey": "",
-            "models": [
-                {
-                    "id": "deepseek-v4-flash",
-                    "name": "DeepSeek V4 Flash",
-                    "contextWindow": 128_000,
-                    "maxTokens": 8_000,
-                    "reasoning": True,
-                    "thinking_level": ["high", "max"],
-                    "input": ["text"],
-                },
-                {
-                    "id": "deepseek-v4",
-                    "name": "DeepSeek V4",
-                    "contextWindow": 128_000,
-                    "maxTokens": 8_000,
-                    "reasoning": True,
-                    "thinking_level": ["high", "max"],
-                    "input": ["text"],
-                },
-            ],
-        }
-    }
+def _quarantine(path: Path, exc: Exception) -> None:
+    """Move an unparseable config aside so the gateway can still start."""
+    stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+    broken = path.with_name(f"{path.name}.broken-{stamp}")
+    try:
+        path.replace(broken)
+        kept = str(broken)
+    except OSError:  # pragma: no cover - only when the file vanishes mid-read
+        kept = "(could not be moved)"
+    logger.error("Failed to parse %s: %s; the broken file was kept at %s", path, exc, kept)
 
 
-@dataclass
-class Settings:
-    primary_model: str = "deepseek/deepseek-v4-flash"
-    providers: dict[str, Any] = field(default_factory=_default_providers)
-    max_turns: int = 25
-    daily_token_budget: int = 0
-    daily_budget_usd: float = 0.0
-    max_requests_per_minute: int = 0
-    mcp_servers: dict[str, Any] = field(default_factory=dict)
-    workflow_loop: bool = True
-    tool_approval: dict[str, Any] = field(
-        default_factory=lambda: {
-            "enabled": True,
-            "always_require": ["run_command", "write_file", "edit_file", "http_fetch"],
-            "never_require": [],
-        }
-    )
+def _read(path: Path) -> Settings:
+    try:
+        data = tomllib.loads(path.read_text(encoding="utf-8"))
+    except (tomllib.TOMLDecodeError, OSError) as exc:
+        _quarantine(path, exc)
+        return Settings()
+    try:
+        return settings_from_mapping(data)
+    except Exception:  # pragma: no cover - defensive: the reader already degrades per field
+        logger.exception("Unexpected error reading %s; falling back to defaults", path)
+        return Settings()
 
 
-def _default_settings() -> Settings:
-    return Settings()
+def _migrate(legacy_path: Path, target: Path) -> Settings:
+    """Convert ``settings.json`` into ``config.toml`` (one shot, non-destructive)."""
+    try:
+        data = json.loads(legacy_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        logger.warning("Could not read legacy settings %s: %s", legacy_path, exc)
+        return Settings()
+    settings, mcp_servers = migrate_legacy_settings(data)
+    try:
+        write_config(settings, target)
+        if mcp_servers:
+            from xiaoqiao.mcp_config import load_mcp_servers, save_mcp_servers
 
-
-def _infer_provider(base_url: str) -> str:
-    url = base_url.lower()
-    if "deepseek" in url:
-        return "deepseek"
-    if "openai" in url:
-        return "openai"
-    if "minimaxi" in url:
-        return "minimax"
-    return "custom"
-
-
-def _split_selected_model(value: str) -> tuple[str, str]:
-    if "/" in value:
-        provider, model = value.split("/", 1)
-        return provider, model
-    return "deepseek", value
+            save_mcp_servers({**mcp_servers, **load_mcp_servers()})
+        logger.info("Migrated %s to %s; the JSON file is kept but no longer read", legacy_path, target)
+    except OSError as exc:
+        logger.warning("Could not write %s: %s", target, exc)
+    return settings
 
 
 def load() -> Settings:
-    """Load settings from ~/.xiaoqiao/settings.json."""
-    if not _SETTINGS_PATH.exists():
-        return _default_settings()
+    """Load settings from ``config.toml`` (migrating ``settings.json`` once)."""
+    target = config_path()
+    if target.exists():
+        return _read(target)
+
+    legacy = legacy_settings_path()
+    if legacy.exists():
+        return _migrate(legacy, target)
+
+    settings = Settings()
     try:
-        data = json.loads(_SETTINGS_PATH.read_text(encoding="utf-8"))
-        s = _default_settings()
-        migrated = False
-
-        # New format
-        if "primaryModel" in data:
-            s.primary_model = data["primaryModel"]
-        if "primary_model" in data:
-            s.primary_model = data["primary_model"]
-        # Keep backward compatibility during transition
-        if "selectedModel" in data:
-            s.primary_model = data["selectedModel"]
-        if "selected_model" in data:
-            s.primary_model = data["selected_model"]
-        if "providers" in data:
-            s.providers = data["providers"]
-
-        # Legacy format migration
-        if "providers" not in data and any(k in data for k in ("model", "base_url", "api_key")):
-            provider_id = _infer_provider(data.get("base_url", ""))
-            model_id = data.get("model", _split_selected_model(s.primary_model)[1])
-            old_thinking = data.get("thinking_level", "")
-            thinking_levels: list[str] = []
-            if old_thinking and old_thinking.lower() not in ("off", ""):
-                thinking_levels.append(old_thinking.lower())
-            if provider_id == "deepseek":
-                for lvl in ("high", "max"):
-                    if lvl not in thinking_levels:
-                        thinking_levels.append(lvl)
-            s.providers = {
-                provider_id: {
-                    "api": "openai-completions",
-                    "baseUrl": data.get("base_url", "https://api.deepseek.com/v1"),
-                    "apiKey": data.get("api_key", ""),
-                    "models": [
-                        {
-                            "id": model_id,
-                            "name": model_id,
-                            "contextWindow": data.get("max_context_tokens", 128_000),
-                            "maxTokens": data.get("max_output_tokens", 8_000),
-                            "reasoning": bool(thinking_levels),
-                            "thinking_level": thinking_levels or ["high", "max"],
-                            "input": ["text"],
-                        }
-                    ],
-                }
-            }
-            s.primary_model = f"{provider_id}/{model_id}"
-            migrated = True
-
-        if "max_turns" in data:
-            s.max_turns = data["max_turns"]
-        if "dailyTokenBudget" in data:
-            s.daily_token_budget = int(data["dailyTokenBudget"] or 0)
-        elif "daily_token_budget" in data:
-            s.daily_token_budget = int(data["daily_token_budget"] or 0)
-        if "dailyBudgetUsd" in data:
-            s.daily_budget_usd = float(data["dailyBudgetUsd"] or 0)
-        elif "daily_budget_usd" in data:
-            s.daily_budget_usd = float(data["daily_budget_usd"] or 0)
-        if "maxRequestsPerMinute" in data:
-            s.max_requests_per_minute = int(data["maxRequestsPerMinute"] or 0)
-        elif "max_requests_per_minute" in data:
-            s.max_requests_per_minute = int(data["max_requests_per_minute"] or 0)
-        if "mcpServers" in data:
-            s.mcp_servers = data["mcpServers"]
-        elif "mcp_servers" in data:
-            s.mcp_servers = data["mcp_servers"]
-        if "workflowLoop" in data:
-            s.workflow_loop = bool(data["workflowLoop"])
-        elif "workflow_loop" in data:
-            s.workflow_loop = bool(data["workflow_loop"])
-        if "toolApproval" in data:
-            s.tool_approval = data["toolApproval"]
-        elif "tool_approval" in data:
-            s.tool_approval = data["tool_approval"]
-
-        if migrated:
-            save(s)
-            logger.info("Migrated legacy settings to new provider/model format")
-
-        return s
-    except (json.JSONDecodeError, OSError) as exc:
-        logger.warning("Failed to load settings from %s: %s", _SETTINGS_PATH, exc)
-        return _default_settings()
+        write_config(settings, target)
+    except OSError as exc:
+        logger.warning("Could not create %s: %s", target, exc)
+    return settings
 
 
-def save(s: Settings) -> None:
-    """Save settings to ~/.xiaoqiao/settings.json."""
-    _SETTINGS_DIR.mkdir(parents=True, exist_ok=True)
-    data = {
-        "primaryModel": s.primary_model,
-        "providers": s.providers,
-        "max_turns": s.max_turns,
-        "dailyTokenBudget": s.daily_token_budget,
-        "dailyBudgetUsd": s.daily_budget_usd,
-        "maxRequestsPerMinute": s.max_requests_per_minute,
-        "mcpServers": s.mcp_servers,
-        "workflowLoop": s.workflow_loop,
-        "toolApproval": s.tool_approval,
-    }
-    _SETTINGS_PATH.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+def save(settings: Settings) -> None:
+    """Persist ``settings`` to ``config.toml`` (comment preserving, atomic)."""
+    write_config(settings, config_path())
 
 
 def resolve_api_key(settings: Settings, model: str | None = None) -> str:
-    """Return the effective API key for the given model (or primary model): provider > env."""
-    provider_id, _ = _split_selected_model(model or settings.primary_model)
-    provider = settings.providers.get(provider_id, {})
-    return provider.get("apiKey") or os.environ.get("DEEPSEEK_API_KEY") or os.environ.get("OPENAI_API_KEY") or ""
+    """Effective API key: provider ``api_key`` > ``api_key_env`` > env table > shell env."""
+    provider = settings.provider(model)
+    if provider is not None:
+        if provider.api_key:
+            return provider.api_key
+        if provider.api_key_env:
+            value = os.environ.get(provider.api_key_env, "").strip()
+            if value:
+                return value
+            logger.warning("api_key_env %s is not set or empty", provider.api_key_env)
+        value = provider.env_value("API_KEY")
+        if value:
+            return value
+
+    global _env_fallback_warned
+    for name in _ENV_FALLBACK_VARS:
+        value = os.environ.get(name, "").strip()
+        if value:
+            if not _env_fallback_warned:
+                _env_fallback_warned = True
+                logger.info("Using %s from the environment; prefer providers.<id>.api_key_env in config.toml", name)
+            return value
+    return ""
 
 
-def model_config(settings: Settings, model: str | None = None) -> dict[str, Any] | None:
-    """Return the config dict for the given model (or primary model)."""
-    provider_id, model_id = _split_selected_model(model or settings.primary_model)
-    provider = settings.providers.get(provider_id, {})
-    for m in provider.get("models", []):
-        if m.get("id") == model_id:
-            return m
-    return None
+def model_config(settings: Settings, model: str | None = None) -> ModelSettings | None:
+    """Return the model entry for the given alias (or ``default_model``)."""
+    return settings.model(model)
 
 
-def thinking_level(settings: Settings, model: str | None = None) -> str | None:
-    """Return the default thinking level for the given model (or primary model).
-
-    Uses the last entry from the model's ``thinking_level`` array,
-    which is assumed to be the strongest/highest level.
-    """
-    cfg = model_config(settings, model)
-    levels = cfg.get("thinking_level") if cfg else None
-    if isinstance(levels, list) and levels:
-        return levels[-1]
-    return None
+def effective_effort(settings: Settings, model: str | None = None) -> str | None:
+    """Thinking effort for a model, or ``None`` when Thinking stays off."""
+    return settings.effective_effort(model)
 
 
 def build_client(settings: Settings, model: str | None = None) -> object:
-    """Create an LLM client for the given model (or primary model)."""
-    provider_id, model_id = _split_selected_model(model or settings.primary_model)
-    provider = settings.providers.get(provider_id, {})
-    base_url = provider.get("baseUrl", "")
-    api_key = resolve_api_key(settings, model)
+    """Create an LLM client for the given model (or ``default_model``)."""
+    alias = model or settings.default_model
+    cfg = settings.model(alias)
+    provider: ProviderSettings | None = settings.provider(alias)
+    model_id = cfg.model if cfg is not None else split_alias(alias)[1]
+    base_url = ""
+    if provider is not None:
+        base_url = provider.base_url or provider.env_value("BASE_URL")
+        if provider.type not in ("openai", "openai_responses"):
+            logger.warning("Provider type %r is not implemented; using the OpenAI-compatible client", provider.type)
+
+    api_key = resolve_api_key(settings, alias)
     if api_key:
         from agent_framework._tools import FunctionInvocationConfiguration
         from agent_framework_openai import OpenAIChatCompletionClient
 
-        logger.info(
-            "Client: provider=%s model=%s base_url=%s",
-            provider_id,
-            model_id,
-            base_url,
-        )
+        logger.info("Client: provider=%s model=%s base_url=%s", cfg.provider if cfg else "", model_id, base_url)
         function_invocation_configuration: FunctionInvocationConfiguration = {
-            "max_iterations": max(settings.max_turns, 1),
+            "max_iterations": max(settings.loop_control.max_steps_per_turn, 1),
         }
         return OpenAIChatCompletionClient(
             model=model_id,
@@ -283,6 +207,72 @@ def build_client(settings: Settings, model: str | None = None) -> object:
 
     logger.warning("No API key found, using fake client")
     return _FakeClient()
+
+
+#: Legacy camelCase keys the gateway still accepts from an older frontend.
+_LEGACY_KEYS = {
+    "primaryModel": "default_model",
+    "primary_model": "default_model",
+    "selectedModel": "default_model",
+    "selected_model": "default_model",
+}
+
+
+def to_wire(settings: Settings) -> dict[str, Any]:
+    """Project settings onto the JSON-RPC payload (snake_case, same as the file)."""
+    return {
+        "default_model": settings.default_model,
+        "providers": {name: asdict(provider) for name, provider in settings.providers.items()},
+        "models": {alias: asdict(model) for alias, model in settings.models.items()},
+        "thinking": asdict(settings.thinking),
+        "loop_control": asdict(settings.loop_control),
+        "limits": asdict(settings.limits),
+        "permission": {
+            "mode": settings.permission.mode,
+            "dangerous_command_guard": settings.permission.dangerous_command_guard,
+            "rules": [asdict(rule) for rule in settings.permission.rules],
+        },
+        "services": {name: asdict(service) for name, service in settings.services.items()},
+    }
+
+
+def apply_update(settings: Settings, patch: Mapping[str, Any]) -> Settings:
+    """Apply a partial update from the UI; legacy camelCase keys are tolerated.
+
+    Each section present in ``patch`` replaces the corresponding one wholesale,
+    which is exactly how the settings store sends it (``{...settings, ...partial}``).
+    """
+    data = {_LEGACY_KEYS.get(str(key), str(key)): value for key, value in patch.items()}
+    default_model = data.get("default_model")
+    if isinstance(default_model, str) and default_model:
+        settings.default_model = default_model
+    if isinstance(data.get("providers"), Mapping):
+        settings.providers = {
+            str(name): provider_from_mapping(str(name), raw) for name, raw in data["providers"].items()
+        }
+    if isinstance(data.get("models"), Mapping):
+        models: dict[str, ModelSettings] = {}
+        for alias, raw in data["models"].items():
+            model = model_from_mapping(str(alias), raw)
+            if model is not None:
+                models[str(alias)] = model
+        settings.models = models
+    if "thinking" in data:
+        settings.thinking = thinking_from_mapping(data["thinking"])
+    if "loop_control" in data:
+        settings.loop_control = loop_control_from_mapping(data["loop_control"])
+    if "limits" in data:
+        settings.limits = limits_from_mapping(data["limits"])
+    if "permission" in data:
+        settings.permission = permission_from_mapping(data["permission"])
+    if "services" in data:
+        settings.services = services_from_mapping(data["services"])
+    if "max_turns" in data:
+        try:
+            settings.loop_control.max_steps_per_turn = int(data["max_turns"])
+        except TypeError, ValueError:
+            logger.warning("Ignoring non-numeric max_turns: %r", data["max_turns"])
+    return settings
 
 
 class _FakeClient:
@@ -330,3 +320,16 @@ class _FakeClient:
             messages=[Message(role="assistant", contents=[Content(type="text", text="Hello from fake client!")])],
             finish_reason="stop",
         )
+
+
+__all__ = [
+    "DEFAULT_MODEL",
+    "ModelSettings",
+    "Settings",
+    "build_client",
+    "effective_effort",
+    "load",
+    "model_config",
+    "resolve_api_key",
+    "save",
+]

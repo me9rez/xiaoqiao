@@ -4,7 +4,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { onComposerInsert } from '@/services/composer'
 import { gatewayService } from '@/services/gateway'
 import { useChatStore } from '@/stores/chat'
-import type { ProviderConfig, Settings } from '@/types/session'
+import type { Settings } from '@/types/session'
 import ModelSelector from './ModelSelector.vue'
 
 const props = defineProps<{
@@ -29,16 +29,14 @@ let unsubscribeComposer: (() => void) | null = null
 const modelOptions = computed(() => {
   const opts: { value: string; label: string; providerId: string; providerName: string; modelId: string }[] = []
   if (!settings.value) return opts
-  for (const [providerId, provider] of Object.entries(settings.value.providers)) {
-    for (const model of (provider as ProviderConfig).models) {
-      opts.push({
-        value: `${providerId}/${model.id}`,
-        label: `${providerId} / ${model.name || model.id}`,
-        providerId,
-        providerName: providerId,
-        modelId: model.id,
-      })
-    }
+  for (const [alias, model] of Object.entries(settings.value.models)) {
+    opts.push({
+      value: alias,
+      label: `${model.provider} / ${model.display_name || model.model}`,
+      providerId: model.provider,
+      providerName: model.provider,
+      modelId: model.model,
+    })
   }
   return opts
 })
@@ -63,15 +61,15 @@ async function loadSettings() {
   }
 }
 
-const effectiveModel = computed(() => props.model || settings.value?.primaryModel || '')
+const effectiveModel = computed(() => props.model || settings.value?.default_model || '')
 
 async function handleModelChange(value: string) {
   if (!value) return
   emit('update:model', value)
   try {
-    await gatewayService.call<Settings>('updateSettings', { primaryModel: value })
+    await gatewayService.call<Settings>('updateSettings', { default_model: value })
     if (settings.value) {
-      settings.value.primaryModel = value
+      settings.value.default_model = value
     }
   } catch (err) {
     console.error('Failed to update primary model', err)

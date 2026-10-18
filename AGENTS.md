@@ -78,7 +78,7 @@ uv run python -m xiaoqiao.main --test "列出当前目录文件"
 - Ruff 配置：line-length 120，双引号，target py314
 - Python 入口：`xiaoqiao.main:main`
 - 发行名与导入包均为 `xiaoqiao`，源码在 `python/src/`，必须让 PYTHONPATH 包含此路径
-- API key 优先级：settings.json > `DEEPSEEK_API_KEY` 环境变量 > `OPENAI_API_KEY`
+- API key 优先级：`[providers.<id>].api_key` > `api_key_env` 指名的环境变量 > `[providers.<id>.env]` 子表 > `DEEPSEEK_API_KEY` > `OPENAI_API_KEY`
 - 添加工具：在 `tools/coding_tools.py` 写 async 函数，在 `create_coding_tools()` 注册 `FunctionTool`，参数名和 docstring 自动转 JSON schema
 
 ## Web 层
@@ -130,11 +130,21 @@ pnpm preview               # 预览构建产物
 
 ## 配置
 
-所有配置在 `~/.xiaoqiao/settings.json`，支持 model/base_url/api_key/thinking_level/token budgets/max_turns。
+运行配置在 `~/.xiaoqiao/config.toml`，结构与字段命名对齐 Kimi Code CLI 的 `config.toml`（snake_case）：
+`default_model` + `[providers.<id>]`（`type`/`base_url`/`api_key`/`api_key_env`）+ `[models."<provider>/<model>"]`
+（别名即 session/bot 里存的 `provider/model` 字符串）+ `[thinking]` + `[loop_control]` + `[limits]` + `[[permission.rules]]`
++ `[services.web_search]`。MCP server 定义在同目录 `mcp.json`（`{"mcpServers": {...}}`），不在 `config.toml` 里。
+
+- 读写实现：`python/src/xiaoqiao/config/{schema,reader,writer,migrate}.py`，`settings.py` 只是门面。
+- 读用 stdlib `tomllib`；写用 `tomlkit` **增量**改写（保留注释与顺序，值没变就不落盘）+ 原子替换。
+- 改配置请走 `xiaoqiao.settings.load()/save()`，**不要直接读写文件**；`load()` 会在只有 `settings.json` 时自动迁移一次。
+- 网关 `getSettings`/`updateSettings` 的词汇与文件一致（snake_case），旧 camelCase 入参有兼容 shim。
+- 配置解析失败会把原文件另存为 `config.toml.broken-<时间戳>` 再回落默认值，不阻止启动。
 
 用户 skill 在 `~/.xiaoqiao/skills/`，项目 skill 在根 `skills/`。
 
-> 旧目录 `~/.coding-agent/` 仍被兼容读取：新目录不存在、旧目录存在时沿用旧目录（见 `python/src/xiaoqiao/paths.py`）。
+> 数据目录可用 `XIAOQIAO_HOME` 覆盖。旧目录 `~/.coding-agent/` 仍被兼容读取：新目录不存在、旧目录存在时沿用旧目录（见 `python/src/xiaoqiao/paths.py`）。
+> 迁移后旧的 `settings.json` **保留不删**，以便降级回旧版本。
 
 ## 打包与发布
 

@@ -39,7 +39,7 @@ from xiaoqiao.events import (
     UsageEvent,
 )
 from xiaoqiao.gateway.transport import StdioTransport
-from xiaoqiao.settings import Settings
+from xiaoqiao.settings import Settings, effective_effort
 from xiaoqiao.turn_runner import TurnRunner
 
 logger = logging.getLogger(__name__)
@@ -258,17 +258,18 @@ class GatewayServer:
         # Build system prompt (skills are advertised via SkillsProvider).
         ctx = discover_project_context()
         mcp_tools_prompt = format_mcp_tools_for_prompt(self._mcp_tools)
+        settings = self._settings if isinstance(self._settings, Settings) else None
         sys_prompt = build_system_prompt(
             BuildSystemPromptOptions(
                 project_context=ctx,
                 mcp_tools_prompt=mcp_tools_prompt,
-                tool_approval=getattr(self._settings, "tool_approval", None),
+                tool_approval=settings.approval_config() if settings else None,
             )
         )
 
         try:
-            thinking = getattr(self._settings, "thinking_level", "") if self._settings else ""
-            model = getattr(self._settings, "primary_model", "") if self._settings else ""
+            model = settings.default_model if settings else ""
+            thinking = effective_effort(settings, model) if settings else None
             runtime = self._turn_runner.runtime_for(
                 session_id=session.id,
                 model=model,

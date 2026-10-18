@@ -1,7 +1,7 @@
 """Entry point for the 小巧 gateway.
 
-Configuration is loaded from ``~/.xiaoqiao/settings.json`` (legacy
-``~/.xiaoqiao/settings.json`` is still honoured).
+Configuration is loaded from ``~/.xiaoqiao/config.toml`` (a legacy
+``settings.json`` is migrated on first load).
 CLI flags and environment variables override file values.
 """
 
@@ -22,9 +22,8 @@ from pathlib import Path
 from xiaoqiao.mcp import create_mcp_tools, format_mcp_tools_for_prompt
 from xiaoqiao.settings import (
     Settings,
-    _split_selected_model,
     build_client,
-    thinking_level,
+    effective_effort,
 )
 from xiaoqiao.settings import load as load_settings
 from xiaoqiao.skills import create_skills_provider
@@ -54,8 +53,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="小巧（Xiaoqiao）gateway")
     parser.add_argument("--log-level", default="WARNING", help="Logging level")
     parser.add_argument("--test", nargs="*", default=None, help="Run one prompt in CLI test mode")
-    parser.add_argument("--model", default=None, help="Override model (default: settings.json)")
-    parser.add_argument("--base-url", default=None, help="Override base URL (default: settings.json)")
+    parser.add_argument("--model", default=None, help="Override model (default: config.toml)")
+    parser.add_argument("--base-url", default=None, help="Override base URL (default: config.toml)")
     parser.add_argument("--thinking-level", default=None, help="Thinking level: off/low/medium/high")
     parser.add_argument("--ws-port", type=int, default=None, help="WebSocket port (WS mode instead of stdio)")
     parser.add_argument(
@@ -129,11 +128,11 @@ def _merge_settings(args: argparse.Namespace) -> Settings:
     """Load settings file, then apply CLI overrides."""
     s = load_settings()
     if args.model:
-        s.primary_model = args.model
+        s.default_model = args.model
     if args.base_url:
-        provider_id, _ = _split_selected_model(s.primary_model)
-        if provider_id in s.providers:
-            s.providers[provider_id]["baseUrl"] = args.base_url
+        provider = s.provider(s.default_model)
+        if provider is not None:
+            provider.base_url = args.base_url
     return s
 
 
@@ -157,10 +156,10 @@ async def _run_test_mode(prompt: str, settings: Settings) -> None:
     )
 
     client = _build_client(settings)
-    tools = create_coding_tools(approval_config=settings.tool_approval)
+    tools = create_coding_tools(approval_config=settings.approval_config())
     skill_provider = create_skills_provider()
     try:
-        mcp_tools = create_mcp_tools(settings)
+        mcp_tools = create_mcp_tools()
         mcp_tools_prompt = format_mcp_tools_for_prompt(mcp_tools)
     except Exception as exc:
         logger.warning("MCP tools unavailable in test mode: %s", exc)
@@ -171,7 +170,7 @@ async def _run_test_mode(prompt: str, settings: Settings) -> None:
         BuildSystemPromptOptions(
             project_context=ctx,
             mcp_tools_prompt=mcp_tools_prompt,
-            tool_approval=settings.tool_approval,
+            tool_approval=settings.approval_config(),
         )
     )
 
@@ -187,7 +186,7 @@ async def _run_test_mode(prompt: str, settings: Settings) -> None:
         print(line, file=sys.stderr, flush=True)
 
     print(f"User: {prompt}", file=sys.stderr)
-    lvl = thinking_level(settings)
+    lvl = effective_effort(settings)
     agent_session = get_or_create_framework_session("test-mode")
 
     runtime = AgentRuntime(
@@ -310,13 +309,13 @@ async def _async_main(
     print(f"Gateway starting, sessions → {_SESSIONS_DIR}", file=sys.stderr, flush=True)
 
     skill_provider = create_skills_provider()
-    mcp_tools = create_mcp_tools(settings)
+    mcp_tools = create_mcp_tools()
 
     if ws_port is not None:
         from xiaoqiao.gateway.ws_server import WsGatewayServer
 
         server = WsGatewayServer(
-            tools=create_coding_tools(approval_config=settings.tool_approval),
+            tools=create_coding_tools(approval_config=settings.approval_config()),
             settings=settings,
             port=ws_port,
             skill_provider=skill_provider,
@@ -333,7 +332,7 @@ async def _async_main(
 
         server = GatewayServer(
             client=_build_client(settings),
-            tools=create_coding_tools(approval_config=settings.tool_approval),
+            tools=create_coding_tools(approval_config=settings.approval_config()),
             transport=StdioTransport(),
             settings=settings,
             skill_provider=skill_provider,
@@ -342,7 +341,43 @@ async def _async_main(
         await server.run()
 
 
+def _run_config_command(argv: list[str]) -> int | None:
+    """Handle ``xiaoqiao config <path|show>``; ``None`` means "not a config command".
+
+    ``path`` prints the effective file locations, ``show`` the parsed values with
+    every secret masked — the two things people need when a setting "doesn't work".
+    """
+    if not argv or argv[0] != "config":
+        return None
+
+    from xiaoqiao.paths import config_path, mcp_config_path
+    from xiaoqiao.settings import to_wire
+
+    action = argv[1] if len(argv) > 1 else "path"
+    if action == "path":
+        print(config_path())
+        print(mcp_config_path())
+        return 0
+    if action == "show":
+        payload = to_wire(load_settings())
+        for provider in payload["providers"].values():
+            if provider.get("api_key"):
+                provider["api_key"] = "***"
+        for service in payload["services"].values():
+            if service.get("api_key"):
+                service["api_key"] = "***"
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+        return 0
+
+    print(f"unknown config action: {action} (expected path or show)", file=sys.stderr)
+    return 2
+
+
 def main() -> None:
+    config_code = _run_config_command(sys.argv[1:])
+    if config_code is not None:
+        sys.exit(config_code)
+
     args = _parse_args()
     logging.basicConfig(
         level=getattr(logging, args.log_level.upper(), logging.WARNING),

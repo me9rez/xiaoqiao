@@ -2,21 +2,13 @@
 import { AlertCircle, ChevronDown, Globe, ImagePlus, Plus, Trash2 } from '@lucide/vue'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
-import type { ProviderConfig } from '@/types/session'
 
 const settingsStore = useSettingsStore()
 const showClearConfirm = ref(false)
 
-const enabledCount = computed(() => {
-  return Object.values(settingsStore.settings.providers).filter((p) => (p as ProviderConfig).enabled !== false).length
-})
+const providerCount = computed(() => Object.keys(settingsStore.settings.providers).length)
 
-function providerEntries() {
-  return Object.entries(settingsStore.settings.providers).map(([id, config]) => ({
-    id,
-    config: config as ProviderConfig,
-  }))
-}
+const providerEntries = computed(() => Object.keys(settingsStore.settings.providers).map((id) => ({ id })))
 
 function providerLabel(id: string): string {
   const labels: Record<string, string> = {
@@ -27,14 +19,9 @@ function providerLabel(id: string): string {
   return labels[id] || id
 }
 
-function providerDescription(id: string, config: ProviderConfig): string {
-  return config.models.map((m) => m.id).join(', ')
-}
-
-function toggleProvider(id: string) {
-  const config = settingsStore.settings.providers[id]
-  if (!config) return
-  settingsStore.updateProvider(id, { enabled: config.enabled === false })
+function providerModelList(id: string): string {
+  const models = settingsStore.modelsFor(id)
+  return models.length ? models.map(([alias]) => alias).join('、') : '未配置模型'
 }
 
 async function handleSave() {
@@ -42,12 +29,7 @@ async function handleSave() {
 }
 
 function clearAllKeys() {
-  const next = { ...settingsStore.settings.providers }
-  for (const id of Object.keys(next)) {
-    const existing = next[id] ?? { models: [] }
-    next[id] = { ...existing, apiKey: '' }
-  }
-  settingsStore.updateSettings({ providers: next })
+  settingsStore.clearApiKeys()
   settingsStore.saveSettings()
   showClearConfirm.value = false
 }
@@ -57,7 +39,7 @@ onMounted(() => {
 })
 
 watch(
-  () => settingsStore.settings.primaryModel,
+  () => settingsStore.settings.default_model,
   async (value, oldValue) => {
     if (value && value !== oldValue) {
       await settingsStore.saveSettings()
@@ -74,7 +56,7 @@ watch(
           模型
         </h1>
         <p class="text-sm text-[var(--text-muted)] mt-1">
-          {{ enabledCount }} 个已启用
+          {{ providerCount }} 个已启用
         </p>
       </div>
       <button
@@ -91,12 +73,9 @@ watch(
 
     <div v-else class="space-y-4">
       <div
-        v-for="{ id, config } in providerEntries()"
+        v-for="{ id } in providerEntries"
         :key="id"
-        class="rounded-2xl border p-5 transition"
-        :class="config.enabled !== false
-          ? 'bg-[var(--bg-card)] border-[var(--border)] shadow-[var(--shadow)]'
-          : 'bg-[var(--bg-page)] border-transparent opacity-70'"
+        class="rounded-2xl border bg-[var(--bg-card)] border-[var(--border)] p-5 shadow-[var(--shadow)] transition"
       >
         <div class="flex items-start justify-between">
           <div>
@@ -104,19 +83,9 @@ watch(
               {{ providerLabel(id) }}
             </h3>
             <p class="text-sm text-[var(--text-muted)] mt-1">
-              {{ providerDescription(id, config) }}
+              {{ providerModelList(id) }}
             </p>
           </div>
-          <button
-            class="relative w-11 h-6 rounded-full transition"
-            :class="config.enabled !== false ? 'bg-[#d9896d]' : 'bg-[var(--bg-muted)]'"
-            @click="toggleProvider(id)"
-          >
-            <span
-              class="absolute top-1 left-1 w-4 h-4 rounded-full bg-white transition-transform"
-              :class="config.enabled !== false ? 'translate-x-5' : 'translate-x-0'"
-            />
-          </button>
         </div>
       </div>
 
@@ -126,7 +95,7 @@ watch(
         </h3>
         <div class="relative mb-4">
           <select
-            v-model="settingsStore.settings.primaryModel"
+            v-model="settingsStore.settings.default_model"
             class="w-full appearance-none px-3 py-2.5 rounded-xl border border-[var(--border)] bg-[var(--bg-page)] outline-none focus:border-[var(--text-muted)] text-sm"
           >
             <option v-for="opt in settingsStore.modelOptions" :key="opt.value" :value="opt.value">
@@ -139,7 +108,7 @@ watch(
         <div>
           <label class="block text-sm font-medium mb-2">Max Turns</label>
           <input
-            v-model.number="settingsStore.settings.max_turns"
+            v-model.number="settingsStore.settings.loop_control.max_steps_per_turn"
             type="number"
             class="w-full px-3 py-2.5 rounded-xl border border-[var(--border)] bg-[var(--bg-page)] outline-none focus:border-[var(--text-muted)] text-sm"
             @change="handleSave"

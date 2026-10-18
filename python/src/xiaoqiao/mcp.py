@@ -1,7 +1,8 @@
 """MCP server configuration and tool construction.
 
-Reads the ``mcpServers`` section from ``~/.xiaoqiao/settings.json`` and
-constructs ``agent_framework`` MCP tool wrappers for each configured server.
+Reads the ``mcpServers`` object from ``~/.xiaoqiao/mcp.json`` and constructs
+``agent_framework`` MCP tool wrappers for each configured server.  Server
+definitions live outside ``config.toml`` on purpose — same split Kimi Code uses.
 """
 
 from __future__ import annotations
@@ -9,9 +10,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from xiaoqiao.settings import Settings
-from xiaoqiao.settings import load as load_settings
-from xiaoqiao.settings import save as save_settings
+from xiaoqiao.mcp_config import load_mcp_servers, save_mcp_servers, server_kind
 
 logger = logging.getLogger(__name__)
 
@@ -141,10 +140,10 @@ def format_mcp_tools_for_prompt(tools: list[Any]) -> str:
     return "\n".join(lines)
 
 
-def create_mcp_tools(settings: Settings) -> list[Any]:
-    """Create MCP tool wrappers from settings.json ``mcpServers``.
+def create_mcp_tools() -> list[Any]:
+    """Create MCP tool wrappers from ``mcp.json`` ``mcpServers``.
 
-    Example ``settings.json`` entries::
+    Example ``mcp.json``::
 
         {
           "mcpServers": {
@@ -153,16 +152,10 @@ def create_mcp_tools(settings: Settings) -> list[Any]:
               "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
             },
             "exa": {
-              "type": "streamable-http",
               "url": "https://mcp.exa.ai/mcp"
             }
           }
         }
-
-    Parameters
-    ----------
-    settings:
-        Loaded settings object.
 
     Returns
     -------
@@ -171,17 +164,14 @@ def create_mcp_tools(settings: Settings) -> list[Any]:
     from agent_framework import MCPStdioTool, MCPStreamableHTTPTool
 
     tools: list[Any] = []
-    servers = getattr(settings, "mcp_servers", None) or {}
-    if not isinstance(servers, dict):
-        logger.warning("mcpServers is not a dict, skipping MCP tool creation")
-        return tools
+    servers = load_mcp_servers()
 
     for name, config in servers.items():
         if not isinstance(config, dict):
             logger.warning("MCP server %s config is not a dict, skipping", name)
             continue
 
-        server_type = config.get("type", "stdio")
+        server_type = server_kind(config)
         description = config.get("description") or f"MCP server: {name}"
         allowed_tools = config.get("allowedTools")
 
@@ -228,8 +218,7 @@ def list_connectors() -> list[dict[str, Any]]:
     -------
     List of connector info dicts.
     """
-    settings = load_settings()
-    configured = getattr(settings, "mcp_servers", None) or {}
+    configured = load_mcp_servers()
     connectors: list[dict[str, Any]] = []
 
     # Add built-in connectors
@@ -270,8 +259,7 @@ def get_connector(name: str) -> dict[str, Any] | None:
     -------
     Connector info dict with config, or None if not found.
     """
-    settings = load_settings()
-    configured = getattr(settings, "mcp_servers", None) or {}
+    configured = load_mcp_servers()
 
     # Check builtin first
     if name in BUILTIN_CONNECTORS:
@@ -307,7 +295,7 @@ def get_connector(name: str) -> dict[str, Any] | None:
 
 
 def install_connector(name: str, config: dict[str, Any] | None = None) -> bool:
-    """Install a connector by adding to settings.
+    """Install a connector by adding it to ``mcp.json``.
 
     Parameters
     ----------
@@ -320,10 +308,6 @@ def install_connector(name: str, config: dict[str, Any] | None = None) -> bool:
     -------
     True if installed successfully.
     """
-    settings = load_settings()
-    if settings.mcp_servers is None:
-        settings.mcp_servers = {}
-
     if config is None and name in BUILTIN_CONNECTORS:
         builtin = BUILTIN_CONNECTORS[name]
         config = {
@@ -334,13 +318,14 @@ def install_connector(name: str, config: dict[str, Any] | None = None) -> bool:
     elif config is None:
         return False
 
-    settings.mcp_servers[name] = config
-    save_settings(settings)
+    servers = load_mcp_servers()
+    servers[name] = config
+    save_mcp_servers(servers)
     return True
 
 
 def uninstall_connector(name: str) -> bool:
-    """Uninstall a connector by removing from settings.
+    """Uninstall a connector by removing it from ``mcp.json``.
 
     Parameters
     ----------
@@ -351,10 +336,10 @@ def uninstall_connector(name: str) -> bool:
     -------
     True if uninstalled, False if not found.
     """
-    settings = load_settings()
-    if settings.mcp_servers and name in settings.mcp_servers:
-        del settings.mcp_servers[name]
-        save_settings(settings)
+    servers = load_mcp_servers()
+    if name in servers:
+        del servers[name]
+        save_mcp_servers(servers)
         return True
     return False
 
@@ -373,10 +358,7 @@ def update_connector_config(name: str, config: dict[str, Any]) -> bool:
     -------
     True if updated, False if not found.
     """
-    settings = load_settings()
-    if settings.mcp_servers is None:
-        settings.mcp_servers = {}
-
-    settings.mcp_servers[name] = config
-    save_settings(settings)
+    servers = load_mcp_servers()
+    servers[name] = config
+    save_mcp_servers(servers)
     return True

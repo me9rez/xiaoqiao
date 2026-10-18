@@ -14,7 +14,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { gatewayService } from '@/services/gateway'
 import { useSessionsStore } from '@/stores/sessions'
 import { useWorkspaceStore } from '@/stores/workspace'
-import type { ProviderConfig, Settings } from '@/types/session'
+import type { Settings } from '@/types/session'
 import ModelSelector from './ModelSelector.vue'
 
 const emit = defineEmits<{
@@ -32,16 +32,14 @@ let unsubscribeOpen: (() => void) | null = null
 const modelOptions = computed(() => {
   const opts: { value: string; label: string; providerId: string; providerName: string; modelId: string }[] = []
   if (!settings.value) return opts
-  for (const [providerId, provider] of Object.entries(settings.value.providers)) {
-    for (const model of (provider as ProviderConfig).models) {
-      opts.push({
-        value: `${providerId}/${model.id}`,
-        label: `${providerId} / ${model.name || model.id}`,
-        providerId,
-        providerName: providerId,
-        modelId: model.id,
-      })
-    }
+  for (const [alias, model] of Object.entries(settings.value.models)) {
+    opts.push({
+      value: alias,
+      label: `${model.provider} / ${model.display_name || model.model}`,
+      providerId: model.provider,
+      providerName: model.provider,
+      modelId: model.model,
+    })
   }
   return opts
 })
@@ -115,13 +113,13 @@ async function loadSettings() {
   }
 }
 
-const effectiveModel = computed(() => settings.value?.primaryModel || '')
+const effectiveModel = computed(() => settings.value?.default_model || '')
 
 async function handleModelChange(value: string) {
   if (!value || !settings.value) return
   try {
-    await gatewayService.call<Settings>('updateSettings', { primaryModel: value })
-    settings.value.primaryModel = value
+    await gatewayService.call<Settings>('updateSettings', { default_model: value })
+    settings.value.default_model = value
   } catch (err) {
     console.error('Failed to update model', err)
   }

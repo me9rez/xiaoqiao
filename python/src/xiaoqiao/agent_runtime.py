@@ -264,9 +264,9 @@ class AgentRuntime:
             from xiaoqiao.settings import model_config
 
             cfg = model_config(settings, getattr(session, "model", None) or None)
-            if cfg:
-                context_window = cfg.get("contextWindow")
-                max_tokens = cfg.get("maxTokens")
+            if cfg is not None:
+                context_window = cfg.max_context_size
+                max_tokens = cfg.max_output_size
                 if isinstance(context_window, int) and context_window > 0:
                     max_context = context_window
                     # Keep the output bound strictly below the window, as the
