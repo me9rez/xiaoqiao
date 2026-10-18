@@ -60,11 +60,14 @@ tinyjs build          # 产物在 desktop/dist/
 | 生命周期 | 外壳以 `stdin: "pipe"` 启动引擎，并传 `--exit-on-stdin-eof`；外壳死掉 → 管道 EOF → 引擎自行退出，不留孤儿进程 |
 | 崩溃恢复 | 引擎非预期退出后按 1s/2s/4s 退避重启，最多 3 次，状态经 `engine-status` 推送 |
 | 数据目录 | 不变，仍是 `~/.xiaoqiao`，与 CLI 共享 bot / 会话 / 记忆 |
+| 托盘 | `app.tray.set(...)` 成功后才 `setHideOnClose(true)`：关窗=隐藏，引擎继续跑；菜单 = 显示 / 重启引擎 / 打开数据目录 / 退出。Linux 跳过（托盘依赖 libayatana） |
+| 日志 | 引擎输出写到 `paths.logs/engine.log`（Windows：`%LOCALAPPDATA%\app.xiaoqiao.desktop\Logs\`），每行带 ISO 时间戳，保留最近 400 行。注意 `app.paths()` **没有 `userData`** 字段 |
+| 单实例 | tinyjs launcher 自带：重复启动不会再开一个窗口，也不会再拉一个引擎 |
+| 后台工作槽 | 引擎启动时抢 `127.0.0.1:8760`；抢不到就进入 **passive** 模式（只服务 WS，不跑调度器/渠道）。这样桌面端与 CLI 同开时定时任务不会重复触发 |
 
 ## 已知缺口（按 `docs/desktop-plan.md` 的里程碑排期）
 
-- M2：托盘常驻、单实例、启动画面与错误横幅
-- M3：原生菜单、审批通知、文件夹选择、拖放、主题同步
+- M3：原生菜单、审批通知、文件夹选择、拖放、主题同步、中文输入法人工验收
 - M4：PyInstaller sidecar（`executables/`）、安装包、自动更新
 - 图标目前是 64×64 放大到 1024×1024，正式发布前需要重绘
 
@@ -74,5 +77,7 @@ tinyjs build          # 产物在 desktop/dist/
 |---|---|
 | `tinyjs: frontend dev server did not respond at http://127.0.0.1:5173` | Vite 绑到了 `localhost`（IPv6），命令里已固定 `--host 127.0.0.1`；若仍失败先确认 5173 没被占用 |
 | 窗口空白 | 检查是否用了 `--mode desktop` 构建；`file://` 下绝对路径 `/assets/*` 全部失效 |
-| `engine did not report ready in time` | 看 `[engine]` 日志；常见原因是 `uv` 不在 PATH，或 `python/` 依赖没 sync |
+| `tinyjs build` 报 `EEXIST: file already exists` | 上一次运行的 `xiaoqiao.exe` 还活着，锁住了 `dist/`。先结束进程再构建 |
 | 引擎连上又立刻断开 | token 不匹配；确认页面拿到的是 `api.gateway()` 返回的 token，而不是旧实例的 |
+| 日志里出现 `running in passive mode` | 另一个引擎（多半是 CLI）已经占着后台工作槽；当前实例只处理界面请求。想让桌面端接管，先退出那个进程 |
+| `engine did not report ready in time` | 看 `engine.log` 尾部；常见原因是 `uv` 不在 PATH，或 `python/` 依赖没 sync |

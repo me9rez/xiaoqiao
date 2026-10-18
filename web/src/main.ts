@@ -12,8 +12,7 @@ import { createPinia } from 'pinia'
 
 import App from './App.vue'
 import router from './router'
-import { resolveGatewayEndpoint } from './services/endpoint'
-import { gatewayService } from './services/gateway'
+import { useBootStore } from './stores/boot'
 import { useChatStore } from './stores/chat'
 import { useWorkspaceStore } from './stores/workspace'
 import { initTheme } from './theme'
@@ -31,10 +30,11 @@ chatStore.setupEventListeners()
 const workspaceStore = useWorkspaceStore()
 workspaceStore.setupEventListeners()
 
+const bootStore = useBootStore()
+
 app.mount('#app')
 
-// Mount first so the window paints immediately: in the desktop shell this
-// await only resolves once the engine is listening on its port.
-void resolveGatewayEndpoint().then((endpoint) => {
-  gatewayService.connect(endpoint)
-})
+// Mount first so the window paints immediately. In a browser this connects in
+// the same tick; in the desktop shell it waits for the engine and shows the
+// boot overlay (or its error state) meanwhile.
+void bootStore.start()

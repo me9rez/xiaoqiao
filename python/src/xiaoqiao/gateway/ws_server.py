@@ -51,6 +51,7 @@ from xiaoqiao.runtime.artifacts import ArtifactRepository, artifact_to_dict
 from xiaoqiao.runtime.channels import ChannelRepository, channel_to_dict
 from xiaoqiao.runtime.group_chat import GroupChatService, render_group_context
 from xiaoqiao.runtime.group_messages import GroupMessageRepository, message_to_dict
+from xiaoqiao.runtime.instance_lock import SCHEDULER_PORT, EngineSlot
 from xiaoqiao.runtime.memory import MemoryRepository, fact_to_dict, note_to_dict
 from xiaoqiao.runtime.routines import RoutineRepository, routine_to_dict
 from xiaoqiao.runtime.runs import RunRepository
@@ -244,6 +245,10 @@ class WsGatewayServer:
         self._db_path = db_path
         self._stop_event = asyncio.Event()
         self._loop: asyncio.AbstractEventLoop | None = None
+        self._slot: EngineSlot | None = None
+        #: True when another live engine owns background work (scheduler,
+        #: channel adapters), e.g. the CLI running beside the desktop shell.
+        self.passive = False
         self._skill_provider = skill_provider
         self._mcp_tools = mcp_tools or []
         self._current_tasks: dict[str, asyncio.Task[None]] = {}
@@ -353,7 +358,7 @@ class WsGatewayServer:
 
     async def _send_ready(self, ws: ServerConnection) -> None:
         """Announce the gateway is usable; only sent once a connection is allowed."""
-        await ws.send(json.dumps({"type": "ready", "workspace": self._workspace}))
+        await ws.send(json.dumps({"type": "ready", "workspace": self._workspace, "passive": self.passive}))
 
     def _token_ok(self, candidate: Any) -> bool:
         """Constant-time check of the handshake token (desktop mode)."""
@@ -1897,18 +1902,33 @@ class WsGatewayServer:
         self._loop = asyncio.get_running_loop()
         ctx = discover_project_context()
         logger.info("WS gateway starting — OS: %s, shell: %s", ctx.os_name, ctx.shell)
-        await self._scheduler.start()
-        await self._start_channels()
-        async with serve(self._handle_ws, self._host, self._port) as server:
-            # ``--ws-port 0`` lets the OS pick; report the port we actually got
-            # so the desktop shell can hand it to the page.
-            self._port = _bound_port(server, self._port)
-            logger.info("WS gateway on ws://%s:%d", self._host, self._port)
-            print(f"WS READY ws://{self._host}:{self._port}", file=sys.stderr, flush=True)
-            await self._stop_event.wait()
-        logger.info("WS gateway stopped")
-        await self._scheduler.stop()
-        await self._stop_channels()
+        # Background work runs once per machine, not once per process: the
+        # desktop shell and the CLI share one database, and two schedulers
+        # would fire every routine twice (desktop-plan R8).
+        self._slot = EngineSlot(SCHEDULER_PORT)
+        if self._slot.acquire():
+            await self._scheduler.start()
+            await self._start_channels()
+        else:
+            self.passive = True
+            logger.warning("Another engine owns the background work slot; running in passive mode")
+        try:
+            async with serve(self._handle_ws, self._host, self._port) as server:
+                # ``--ws-port 0`` lets the OS pick; report the port we actually got
+                # so the desktop shell can hand it to the page.
+                self._port = _bound_port(server, self._port)
+                logger.info("WS gateway on ws://%s:%d", self._host, self._port)
+                print(f"WS READY ws://{self._host}:{self._port}", file=sys.stderr, flush=True)
+                await self._stop_event.wait()
+        finally:
+            # Always give the slot back, including on cancellation, so a restart
+            # in the same process (or the next test) can take it again.
+            logger.info("WS gateway stopped")
+            await self._scheduler.stop()
+            await self._stop_channels()
+            if self._slot is not None:
+                self._slot.release()
+                self._slot = None
 
 
 def _bound_port(server: Any, fallback: int) -> int:

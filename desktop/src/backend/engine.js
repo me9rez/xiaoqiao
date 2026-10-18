@@ -14,6 +14,7 @@ const IS_WIN = tjs.env.OS === 'Windows_NT'
 const READY_PREFIX = 'WS READY '
 const MAX_RESTARTS = 3
 const LOG_TAIL = 40
+const LOG_KEEP = 400
 
 function randomToken() {
   const bytes = new Uint8Array(24)
@@ -46,7 +47,7 @@ async function resolveRepoRoot() {
 async function resolveCommand(paths) {
   const exe = paths?.executables ? `${paths.executables}/${IS_WIN ? 'xiaoqiao-core.exe' : 'xiaoqiao-core'}` : null
   if (exe && (await fileExists(exe))) {
-    return { argv: [exe], cwd: paths?.userData || tjs.cwd, mode: 'packaged' }
+    return { argv: [exe], cwd: paths?.data || tjs.cwd, mode: 'packaged' }
   }
 
   const repo = await resolveRepoRoot()
@@ -109,6 +110,12 @@ export function createEngine({ onStatus } = {}) {
     void persistLog()
   }
 
+  /** Append one engine line (timestamped) to the in-memory log. */
+  function logLine(line) {
+    logTail.push(`${new Date().toISOString()} ${line}`)
+    if (logTail.length > LOG_KEEP) logTail.shift()
+  }
+
   function settle(value, error) {
     const pendingResolve = waiters
     const pendingReject = rejecters
@@ -124,7 +131,7 @@ export function createEngine({ onStatus } = {}) {
     if (mode === 'dev') fullArgs.push('--log-level', 'INFO')
 
     const env = { ...tjs.env, XIAOQIAO_TOKEN: token, PYTHONUNBUFFERED: '1' }
-    logTail.push(`[shell] starting ${mode} engine: ${fullArgs.join(' ')}`)
+    logLine(`[shell] starting ${mode} engine: ${fullArgs.join(' ')}`)
     console.log(`[shell] starting ${mode} engine (cwd=${cwd})`)
 
     proc = tjs.spawn(fullArgs, {
@@ -136,8 +143,7 @@ export function createEngine({ onStatus } = {}) {
     })
 
     void pumpLines(proc.stdout, (line) => {
-      logTail.push(line)
-      if (logTail.length > 200) logTail.shift()
+      logLine(line)
       if (line.startsWith(READY_PREFIX)) {
         const url = line.slice(READY_PREFIX.length).trim()
         endpoint = { url, token }
@@ -148,8 +154,7 @@ export function createEngine({ onStatus } = {}) {
       }
     })
     void pumpLines(proc.stderr, (line) => {
-      logTail.push(line)
-      if (logTail.length > 200) logTail.shift()
+      logLine(line)
       // Keep the dev terminal readable: only lifecycle and error lines.
       // (Python prefixes log lines with "INFO <logger>:", so match anywhere.)
       if (/(WS READY|Client (connected|authenticated)|Rejected unauthenticated|Traceback|ERROR|Shutdown requested)/.test(line)) {
@@ -190,14 +195,27 @@ export function createEngine({ onStatus } = {}) {
     return paths
   }
 
+  /** tinyjs exposes `logs` (and `data`); `userData` does not exist. */
+  function logDir() {
+    return paths?.logs || paths?.data || null
+  }
+
   /** Keep a copy of the engine's output next to the app's data. */
   async function persistLog() {
-    if (!paths?.userData) return
+    const dir = logDir()
+    if (!dir) return
     try {
-      await tjs.writeFile(`${paths.userData}/engine.log`, `${logTail.join('\n')}\n`)
+      // The directory may not exist yet on a first run.
+      await tjs.makeDir(dir, { recursive: true })
+      await tjs.writeFile(`${dir}/engine.log`, `${logTail.join('\n')}\n`)
     } catch (error) {
       console.log('[shell] engine log write failed:', String(error))
     }
+  }
+
+  function logPath() {
+    const dir = logDir()
+    return dir ? `${dir}/engine.log` : null
   }
 
   return {
@@ -226,6 +244,8 @@ export function createEngine({ onStatus } = {}) {
     },
 
     status,
+
+    logPath,
 
     async restart() {
       await this.stop()

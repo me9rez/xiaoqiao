@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { DEFAULT_WS_URL, isDesktop, resolveGatewayEndpoint } from '@/services/endpoint'
+import { DEFAULT_WS_URL, isDesktop, onEngineStatus, resolveGatewayEndpoint } from '@/services/endpoint'
 
-type TinyWindow = { tiny?: { api?: { call?: unknown } } }
+type TinyWindow = { tiny?: { api?: { call?: unknown; on?: unknown } } }
 
-function installBridge(call: unknown) {
-  ;(globalThis as unknown as TinyWindow).tiny = { api: { call } }
+function installBridge(call: unknown, on?: unknown) {
+  ;(globalThis as unknown as TinyWindow).tiny = { api: { call, on } }
 }
 
 describe('resolveGatewayEndpoint', () => {
@@ -29,10 +29,16 @@ describe('resolveGatewayEndpoint', () => {
     expect(call).toHaveBeenCalledWith('gateway')
   })
 
-  it('falls back when the engine never came up', async () => {
-    installBridge(vi.fn().mockRejectedValue(new Error('engine failed')))
+  it('surfaces the reason when the engine never came up', async () => {
+    installBridge(vi.fn().mockRejectedValue(new Error('engine exited (1)')))
 
-    await expect(resolveGatewayEndpoint()).resolves.toEqual({ url: DEFAULT_WS_URL })
+    await expect(resolveGatewayEndpoint()).rejects.toThrow(/engine exited \(1\)/)
+  })
+
+  it('rejects when the shell answers without a URL', async () => {
+    installBridge(vi.fn().mockResolvedValue({}))
+
+    await expect(resolveGatewayEndpoint()).rejects.toThrow(/没有返回连接地址/)
   })
 
   it('ignores a bridge without a callable api', async () => {
@@ -40,5 +46,26 @@ describe('resolveGatewayEndpoint', () => {
 
     expect(isDesktop()).toBe(false)
     await expect(resolveGatewayEndpoint()).resolves.toEqual({ url: DEFAULT_WS_URL })
+  })
+})
+
+describe('onEngineStatus', () => {
+  afterEach(() => {
+    delete (globalThis as unknown as TinyWindow).tiny
+  })
+
+  it('is a no-op without a bridge', () => {
+    expect(() => onEngineStatus(() => {})()).not.toThrow()
+  })
+
+  it('subscribes through the bridge and returns its unsubscribe', () => {
+    const unsubscribe = vi.fn()
+    const on = vi.fn().mockReturnValue(unsubscribe)
+    installBridge(vi.fn(), on)
+
+    const stop = onEngineStatus(() => {})
+    expect(on).toHaveBeenCalledWith('engine-status', expect.any(Function))
+    stop()
+    expect(unsubscribe).toHaveBeenCalled()
   })
 })
