@@ -213,6 +213,26 @@ vitest 102、pytest **282**、`pnpm build-only` 通过。
 
 回归：`vue-tsc --build` 0 错误、vitest 102、Chromium 截图核对。
 
+### M4 设置与用量（2026-10-18）
+
+**设置改覆盖式对话框**（`SettingsLayout.vue`）：整页布局换成 `fixed inset-0` + 遮罩 + 居中卡片（`max-w-4xl`、`max-h-[85vh]`），左栏是分区导航、右上是当前分区名与 `✕`（Esc 也能关，`router.back()`，无历史时回首页）。左栏顺序对齐参考：**通用 / 模型 / 频道 / 记忆 / 性格 / 安全 / 用量 / 诊断 / 反馈 / 版本**，下面隔一条线放两个「在对话框外」的入口（定时任务、工具箱）——参考也是这么把非设置项塞进同一栏的。
+路由此刻只描述内容区，`/settings` 仍重定向到 `/settings/usage`。
+
+**用量页**（`SettingsUsageView.vue` + `UsageRepository.by_bot()/by_day()`）：
+
+| 区块 | 内容 |
+|---|---|
+| 范围 | 今日 / **7 天（默认）** / 30 天 |
+| KPI ×4 | Token / 输出 / 调用次数 / 花费 |
+| Token 走势 | 每天一列、按 bot 分段的堆叠柱状图 + 峰值 + **带 Bot 名的图例**（不只靠色块） |
+| Bot 榜 | emoji + 名字 + 职位 + token + 占比 + 进度条 |
+| 模型榜 | 模型 + token + 占比 + 进度条 |
+| 今日预算 | token / 美元两条进度条（原有） |
+
+`usageSummary` 新增 `byBot` 与 `byDay`；页面改成团队视角（不再按 `activeBot` 过滤），RPC 仍支持 `botId`。
+
+未做：参考的「缓存命中率」KPI——`UsageTotals` 没有 cache token 字段（M5 补）。
+
 ---
 
 ## 6. 已知问题
