@@ -115,7 +115,7 @@ const toolUsage = computed(() => {
       <div class="flex flex-col items-center gap-1">
         <span class="text-[36px] leading-none select-none" aria-hidden="true">{{ bot.emoji || '🤖' }}</span>
         <span class="mt-1 text-[15px] font-medium text-[var(--color-text-strong)]">{{ bot.name }}</span>
-        <span class="text-[12px] text-[var(--color-text-faint)]">{{ isMainBot ? '主 Bot' : (bot.model || '未指定模型') }}</span>
+        <span class="text-[12px] text-[var(--color-text-faint)]">{{ bot.role || (isMainBot ? '主 Bot' : (bot.model || '未指定模型')) }}</span>
       </div>
 
       <div class="mt-3 space-y-2">

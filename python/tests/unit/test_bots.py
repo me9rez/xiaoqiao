@@ -95,3 +95,36 @@ def test_bot_to_dict(repo: BotRepository) -> None:
     assert data["name"] == "Coder"
     assert data["tools"] == ["read_file"]
     assert data["createdAt"]
+
+
+class TestBotProfile:
+    """`role` / `description` are the fields the sidebar and detail drawer read."""
+
+    def test_create_persists_role_and_description(self, repo: BotRepository) -> None:
+        bot = repo.create("Chief", role="总管", description="有问题找我")
+
+        reloaded = repo.get(bot.id)
+
+        assert reloaded is not None
+        assert (reloaded.role, reloaded.description) == ("总管", "有问题找我")
+
+    def test_defaults_are_empty_strings(self, repo: BotRepository) -> None:
+        bot = repo.create("Plain")
+
+        assert (bot.role, bot.description) == ("", "")
+
+    def test_update_accepts_both_fields(self, repo: BotRepository) -> None:
+        bot = repo.create("Coder")
+
+        updated = repo.update(bot.id, role="程序员", description="负责写代码")
+
+        assert updated is not None
+        assert (updated.role, updated.description) == ("程序员", "负责写代码")
+
+    def test_to_dict_exposes_them(self, repo: BotRepository) -> None:
+        bot = repo.create("Chief", role="总管", description="有问题找我")
+
+        data = bot_to_dict(bot)
+
+        assert data["role"] == "总管"
+        assert data["description"] == "有问题找我"

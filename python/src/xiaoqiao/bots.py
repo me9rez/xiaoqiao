@@ -40,6 +40,10 @@ class Bot:
     workspace: str
     created_at: str
     updated_at: str
+    #: Short job title ("总管", "程序员"), shown in the sidebar and the detail drawer.
+    role: str = ""
+    #: One-line introduction, rendered under the bot's name.
+    description: str = ""
 
 
 def _now() -> str:
@@ -49,6 +53,14 @@ def _now() -> str:
 def _slugify(name: str) -> str:
     """ASCII slug; non-Latin names get an id-based fallback in ``create``."""
     return _SLUG_RE.sub("-", name.strip().lower()).strip("-")
+
+
+def _optional_column(row: sqlite3.Row, column: str) -> str:
+    """Read a post-v3 column, tolerating rows selected before the migration ran."""
+    try:
+        return str(row[column] or "")
+    except IndexError:
+        return ""
 
 
 def _row_to_bot(row: sqlite3.Row) -> Bot:
@@ -67,6 +79,8 @@ def _row_to_bot(row: sqlite3.Row) -> Bot:
         workspace=row["workspace"],
         created_at=row["created_at"],
         updated_at=row["updated_at"],
+        role=_optional_column(row, "role"),
+        description=_optional_column(row, "description"),
     )
 
 
@@ -80,6 +94,8 @@ def bot_to_dict(bot: Bot) -> dict[str, Any]:
         "model": bot.model,
         "tools": list(bot.tools),
         "workspace": bot.workspace,
+        "role": bot.role,
+        "description": bot.description,
         "createdAt": bot.created_at,
         "updatedAt": bot.updated_at,
     }
@@ -128,6 +144,8 @@ class BotRepository:
         workspace: str = "",
         tools: list[str] | None = None,
         slug: str | None = None,
+        role: str = "",
+        description: str = "",
     ) -> Bot:
         cleaned = name.strip()
         if not cleaned:
@@ -140,8 +158,8 @@ class BotRepository:
             conn.execute(
                 """
                 INSERT INTO bots (id, name, slug, emoji, persona_md, model, tools_json, workspace,
-                                  created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                  role, description, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     bot_id,
@@ -152,6 +170,8 @@ class BotRepository:
                     model,
                     json.dumps(list(tools or []), ensure_ascii=False),
                     workspace,
+                    role,
+                    description,
                     now,
                     now,
                 ),
@@ -167,6 +187,8 @@ class BotRepository:
             "persona": "persona_md",
             "model": "model",
             "workspace": "workspace",
+            "role": "role",
+            "description": "description",
             "slug": "slug",
         }
         updates: list[str] = []

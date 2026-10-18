@@ -744,6 +744,8 @@ class WsGatewayServer:
                             persona=params.get("persona", ""),
                             model=params.get("model", ""),
                             workspace=params.get("workspace", ""),
+                            role=params.get("role", ""),
+                            description=params.get("description", ""),
                         )
                         self._send_rpc_response(request_id, bot_to_dict(bot))
                     except Exception as exc:

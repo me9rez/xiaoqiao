@@ -89,6 +89,7 @@ function botEmoji(id: string): string {
 
 /** One short line under the name: what this bot is for. */
 function botSubtitle(bot: Bot): string {
+  if (bot.description) return bot.description
   const line = (bot.persona || '').split('\n').map((part) => part.trim()).find(Boolean) ?? ''
   if (line) return line.length > 40 ? `${line.slice(0, 40)}…` : line
   return bot.model || '还没有介绍'
