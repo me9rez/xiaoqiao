@@ -477,3 +477,49 @@ R8 需要单独强调：目前 `agent.db` 是单进程假设，桌面版让「CL
 3. **API key 是否迁到系统凭据库**（`app.secrets`）？更安全，但 CLI 读不到，会破坏「CLI 与桌面共享配置」。
 4. **是否给桌面端单独版本号**？`tinyjs.json` 的 `version` 与 Python 包版本是否同步（影响自更新判断）。
 5. **M5 是否值得做**？如果 A1 的临时端口在实践中无感（多实例罕见、冲突为零），去端口化的收益主要是「页面无网络」的安全叙事，需要产品侧确认优先级。
+
+---
+
+## 12. 实施记录
+
+### 12.1 M0 冒烟：五个验证点全部有结论
+
+用一个自驱动页面（`inject` 的探针脚本 + `tiny.quit()`）在 `tinyjs dev` 里跑完，结果：
+
+| 验证点 | 结果 |
+|---|---|
+| `file://` 下加载 Vite 产物 | ✅ 但**必须** `base: './'`：默认 `/assets/...` 全部 404，`#app` 为空 |
+| `file://` → `ws://127.0.0.1` | ✅ 直连成功，`getSettings` 往返正常 |
+| `localStorage` 在 `file://` 下 | ✅ 可写可读 |
+| `crypto.randomUUID()` / `crypto.subtle` | ✅ 可用（`file://` 是 secure context） |
+| ES module 从 `file://` 导入 | ✅ 动态 import 正常 |
+
+实测数据：改用相对 base 重建后 `appChildren: 1`、`vueMounted: true`，即真实应用在 `file://` 下完整启动。
+
+中文输入法（IME）无法自动断言，留作 M2 人工验收项。
+
+### 12.2 M1 已完成
+
+| 层 | 交付 |
+|---|---|
+| Python | `--desktop`（不启静态服务、不 `_free_port`）、`--ws-port 0` 取系统端口并打印实际值、`--auth-token`/`XIAOQIAO_TOKEN` 握手、`--exit-on-stdin-eof`、`shutdown` RPC、`WsGatewayServer.port` 与 `db_path`、`_stop_channels()` |
+| 前端 | `services/endpoint.ts`（桌面问外壳、浏览器用常量）、`GatewayService.connect(endpoint)` + 握手期间消息排队 + `auth_failed` 事件、`main.ts` 先挂载再解析端点、`vite build --mode desktop` 相对 base、字体改为 npm 本地打包、修掉 `EmptyState.vue` 漏导入 `ChevronDown` |
+| 外壳 | `desktop/`（`tinyjs.json`、`src/backend/{main,engine}.js`、`assets/icon.png`、`README.md`、`.gitignore`） |
+
+验证：`pytest` **198 passed**、`vitest` **67 passed**、`ruff check/format` 干净、`pyright` 0 错误、`pnpm type-check` 通过、`vite build --mode desktop` 成功、`tinyjs dev` 与 `tinyjs build` 均跑通；打包产物 `desktop/dist/xiaoqiao.exe` 启动后日志出现 `Client connected` + `Client authenticated`；强杀外壳后引擎进程立即退出、端口释放（无孤儿）。
+
+### 12.3 与方案的偏差（有意为之）
+
+1. **没有引入 `GatewayTransport` 接口**，只做了 `endpoint.ts` + 握手。理由：方案里的接口是为了 A2 的第二个实现；现在只有 WebSocket 一个消费者，加接口只是空转。A2 落地时再抽，届时 `wsTransport.ts` 与 `tinyTransport.ts` 同时出现才有意义。
+2. **开发态走 `devUrl`（http://127.0.0.1:5173），不是 `file://`**。`tinyjs dev` 在没有 `dev`/`devUrl` 时只会去找 `src/frontend/index.html`，忽略 `frontend.dist`。`file://` 路径由 `tinyjs build` 出的产物覆盖验证（已验证）。
+3. **生命周期用 stdin EOF，而不是发 `shutdown` RPC**。外壳以 `stdin: "pipe"` 启动引擎并传 `--exit-on-stdin-eof`，外壳一死管道就 EOF，引擎自行退出——跨平台、无需 pid 轮询。`shutdown` RPC 仍然保留给"优雅退出"场景。
+4. **`--ws-port 0` 原本是坏的**：`main.py` 里 `if args.ws_port:` 把 `0` 当假值，会掉进 stdio 模式。已改成 `is not None`。
+5. **`WsGatewayServer` 新增 `db_path` 参数**：测试需要（不碰真实库），也顺带为 R8 的多实例方案留了口子。
+
+### 12.4 M1 之后仍未做
+
+- M2：托盘常驻、单实例、启动画面、错误横幅、日志文件（`engine.log` 已写但未验证格式）、IME 人工验收、R8 并发写库
+- M3：原生菜单、审批通知、文件夹选择、拖放、主题同步
+- M4：PyInstaller sidecar（现在打包版仍靠本机 `uv` 找引擎，只在开发机成立）、安装包、自更新
+- 图标仍是 64×64 放大到 1024×1024，正式发布前需重绘
+

@@ -84,3 +84,20 @@ misc:      listTools / previewPrompt / prompt / cancel / listSessions / ...
 | CI | `.github/workflows/ci.yml` | **GitHub Actions 双 job 全绿**（run [39058498974](https://github.com/me9rez/xiaoqiao/actions/runs/39058498974)：python = lint + format + pyright + pytest，web = type-check + vitest + build，均在 ubuntu-latest 上） |
 
 > 环境注意：宿主机 `NO_PROXY` 含裸 IPv6 `[::1]` 时，`httpx2` 解析代理会抛 `InvalidURL`，导致 `test_settings.py` 的一个用例失败。这是环境既有问题（升级前后一致），清空代理变量后 192 项全通过。CI 的 runner 无此变量，因此不受影响。
+
+---
+
+## 桌面化（2026-10-18，M0–M1）
+
+方案见 [desktop-plan.md](desktop-plan.md)。M0 冒烟与 M1 外壳已完成：
+
+| 项 | 状态 |
+|---|---|
+| M0 可行性 | ✅ `file://` 加载、`file://`→`ws://127.0.0.1` 直连、`localStorage`、`randomUUID`/`subtle`、ES module 导入全部通过 |
+| M1 引擎契约 | ✅ `--desktop`、`--ws-port 0`、`--auth-token`、`--exit-on-stdin-eof`、`shutdown` RPC |
+| M1 前端 | ✅ 端点解析、握手排队、`auth_failed`、`vite --mode desktop` 相对 base、字体本地化 |
+| M1 外壳 | ✅ `desktop/`（tinyjs.json + engine 守护 + api 面） |
+| 回归 | ✅ pytest **198**、vitest **67**、ruff/pyright 干净、type-check 与两种 vite 构建通过 |
+| 打包冒烟 | ✅ `tinyjs build` → `desktop/dist/xiaoqiao.exe` 能拉起引擎并完成鉴权；强杀外壳后引擎退出、端口释放 |
+
+未做（按方案排期）：托盘/单实例/启动画面（M2）、原生菜单与通知（M3）、PyInstaller sidecar 与安装包（M4）、去端口化（M5）。

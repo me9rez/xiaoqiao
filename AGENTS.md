@@ -2,11 +2,25 @@
 
 ## 仓库结构
 
-两包 monorepo，根目录无直接代码：
+三包 monorepo，根目录无直接代码：
 
 - `python/` — agent 核心（agent-framework harness + 工具 + gateway），Python 3.14+
 - `web/` — Web 前端（Vue + Vite），Node 22+, pnpm
+- `desktop/` — 桌面外壳（tinyjs + txiki.js），把 `web` 的构建产物装进原生窗口并守护 `python` 引擎
 - 必须 `cd` 进对应目录再执行命令
+
+### 桌面外壳（desktop/）
+
+```powershell
+cd desktop
+tinyjs dev                 # Vite HMR + 原生窗口；自动拉起 python 引擎
+tinyjs build               # 产物在 desktop/dist/
+```
+
+- 引擎由 `src/backend/engine.js` 拉起：`python -m xiaoqiao.main --desktop --ws-port 0`，端口由系统分配，token 经 `XIAOQIAO_TOKEN` 传入。
+- 页面通过 `tiny.api.call('gateway')` 拿到 `{url, token}`，第一帧必须发 `auth`。
+- 前端桌面构建走 `vite build --mode desktop`（相对路径），否则 `file://` 下白屏。
+- 详细契约与排错见 `desktop/README.md`，方案见 `docs/desktop-plan.md`。
 
 ## Python 层
 
@@ -139,9 +153,11 @@ xiaoqiao --web
 - 发行名与入口脚本在 `python/pyproject.toml` 中定义（`xiaoqiao` + 兼容别名 `coding-agent`）。
 - 运行时会优先使用 wheel 内嵌的 `xiaoqiao/web_dist` 资源，开发环境回退到 `web/dist`。
 
-## 无 CI / 无 pre-commit
+## CI / 提交前自检
 
-仓库没有 CI 配置或 pre-commit hook。修改后手动运行：
-1. `ruff check src/`（Python lint）
-2. `cd web && pnpm test:unit`（Web 测试）
-3. `uv run pytest`（Python 测试）
+CI 在 `.github/workflows/ci.yml`：`python` job 跑 lint + format + pyright + pytest，`web` job 跑 type-check + vitest + build（`ubuntu-latest`）。本地提交前仍建议手动跑：
+
+1. `cd python && uv run ruff check src/ tests/ && uv run ruff format --check src/ tests/`
+2. `cd python && uv run pyright && uv run pytest`
+3. `cd web && pnpm type-check && pnpm test:unit --run`
+4. 改了 `desktop/` 或前端构建配置：`cd desktop && tinyjs build`
