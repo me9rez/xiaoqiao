@@ -28,6 +28,7 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import type { BotActivityState } from '@/types/activity'
 import type { Bot } from '@/types/bot'
 import type { Group } from '@/types/group'
+import { isSessionUnread } from '@/utils/unread'
 
 const emit = defineEmits<{ editBot: [bot: Bot | null] }>()
 
@@ -477,6 +478,12 @@ onUnmounted(() => {
             <span v-else class="truncate" @dblclick.prevent="startRename(session, $event)">
               {{ session.title || '未命名会话' }}
             </span>
+            <span
+              v-if="session.id !== sessionsStore.currentSessionId && isSessionUnread(session)"
+              class="ml-auto h-1.5 w-1.5 flex-shrink-0 rounded-full bg-[var(--color-accent)]"
+              title="有新进展"
+              aria-label="有新进展"
+            />
           </RouterLink>
         </div>
       </div>

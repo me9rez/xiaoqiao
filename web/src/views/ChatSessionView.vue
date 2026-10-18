@@ -6,6 +6,7 @@ import ChatInput from '@/components/chat/ChatInput.vue'
 import MessageList from '@/components/chat/MessageList.vue'
 import { useChatStore } from '@/stores/chat'
 import { useSessionsStore } from '@/stores/sessions'
+import { markSessionRead } from '@/utils/unread'
 
 const props = defineProps<{
   sessionId: string
@@ -31,6 +32,7 @@ async function loadSessionData(id: string) {
     const session = await sessionsStore.loadSession(id)
     if (session) {
       chatStore.loadSession(session)
+      markSessionRead(id)
     }
   } finally {
     loading.value = false
