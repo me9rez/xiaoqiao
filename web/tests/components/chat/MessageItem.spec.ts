@@ -1,8 +1,14 @@
 import { mount } from '@vue/test-utils'
-import { describe, expect, it } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
+import { beforeEach, describe, expect, it } from 'vitest'
 import MessageItem from '@/components/chat/MessageItem.vue'
 
 describe('MessageItem', () => {
+  beforeEach(() => {
+    // The component exposes a 引用 action that writes to the chat store.
+    setActivePinia(createPinia())
+  })
+
   it('renders user message', () => {
     const wrapper = mount(MessageItem, {
       props: {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Plus, Send, Square } from '@lucide/vue'
+import { Plus, Send, Square, X } from '@lucide/vue'
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { onComposerInsert } from '@/services/composer'
 import { useChatStore } from '@/stores/chat'
@@ -99,6 +99,27 @@ onUnmounted(() => {
   <div class="px-6 py-4 border-t border-[var(--border)] bg-[var(--bg-page)]">
     <div class="max-w-4xl mx-auto">
       <div class="rounded-2xl bg-[var(--bg-card)] border border-[var(--border)] shadow-[var(--shadow)] px-4 py-3">
+        <div
+          v-if="chatStore.pendingQuote"
+          class="mb-2 flex items-start gap-2 rounded-xl border-l-2 border-[var(--color-accent)] bg-[var(--color-surface-sunken)] px-2.5 py-1.5"
+        >
+          <div class="min-w-0 flex-1">
+            <p class="text-[11px] font-medium text-[var(--color-text-muted)]">
+              引用 {{ chatStore.pendingQuote.authorName }}
+            </p>
+            <p class="truncate text-[12px] text-[var(--color-text-faint)]">
+              {{ chatStore.pendingQuote.text }}
+            </p>
+          </div>
+          <button
+            type="button"
+            class="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-[var(--color-text-faint)] transition hover:bg-[var(--color-hover)] hover:text-[var(--color-text)]"
+            aria-label="取消引用"
+            @click="chatStore.clearQuote()"
+          >
+            <X class="h-3.5 w-3.5" />
+          </button>
+        </div>
         <textarea
           ref="textareaRef"
           v-model="text"

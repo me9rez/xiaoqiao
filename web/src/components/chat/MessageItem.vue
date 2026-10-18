@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ChevronRight, Copy, Edit, RefreshCw, ThumbsDown, ThumbsUp, Trash2 } from '@lucide/vue'
+import { ChevronRight, Copy, Edit, Quote, RefreshCw, ThumbsDown, ThumbsUp, Trash2 } from '@lucide/vue'
 import { computed, ref } from 'vue'
 import ToolCallBlock from '@/components/chat/ToolCallBlock.vue'
+import { useChatStore } from '@/stores/chat'
 import type { UiMessage } from '@/types/session'
 import { renderMarkdown } from '@/utils/markdown'
 
@@ -17,6 +18,8 @@ const props = withDefaults(
   { authorName: '', authorEmoji: '', authorBadge: '' },
 )
 
+const chatStore = useChatStore()
+
 const emit = defineEmits<{
   copy: [content: string]
   edit: [message: UiMessage]
@@ -28,6 +31,13 @@ const isUser = computed(() => props.message.role === 'user')
 const renderedContent = computed(() => renderMarkdown(props.message.content))
 const showActions = ref(false)
 const showThinking = ref(false)
+
+function handleQuote() {
+  chatStore.setQuote({
+    authorName: props.authorName || (props.message.role === 'user' ? '你' : '助手'),
+    text: props.message.content.trim().slice(0, 200),
+  })
+}
 
 function handleCopy() {
   emit('copy', props.message.content)
@@ -141,6 +151,13 @@ function formatTime(timestamp?: number) {
           @click="handleCopy"
         >
           <Copy class="h-3.5 w-3.5" />
+        </button>
+        <button
+          class="rounded-[var(--radius-sm)] p-1.5 text-[var(--color-text-faint)] transition hover:bg-[var(--color-hover)] hover:text-[var(--color-text)]"
+          title="引用"
+          @click="handleQuote"
+        >
+          <Quote class="h-3.5 w-3.5" />
         </button>
         <template v-if="isUser">
           <button

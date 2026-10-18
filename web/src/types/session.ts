@@ -216,4 +216,13 @@ export interface UiMessage {
     exitCode: number
     finished?: boolean
   }
+  /** Set when the user replied to a specific earlier message. */
+  quoted?: QuotedMessage
+}
+
+export interface QuotedMessage {
+  /** Who wrote the quoted message — a bot name in groups, "你" in direct chats. */
+  authorName: string
+  /** The quoted text, already truncated for display. */
+  text: string
 }

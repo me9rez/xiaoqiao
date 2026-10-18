@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { gatewayService } from '@/services/gateway'
 import { useBotsStore } from '@/stores/bots'
-import type { Message, MessageContent, UiMessage } from '@/types/session'
+import type { Message, MessageContent, QuotedMessage, UiMessage } from '@/types/session'
 import {
   isDoneEvent,
   isErrorEvent,
@@ -36,6 +36,17 @@ interface SessionData {
 export const useChatStore = defineStore('chat', () => {
   const sessions = ref<Map<string, SessionData>>(new Map())
   const activeSessionId = ref<string | null>(null)
+
+/** The message the user chose to reply to; cleared once the prompt is sent. */
+const pendingQuote = ref<QuotedMessage | null>(null)
+
+function setQuote(quote: QuotedMessage | null) {
+  pendingQuote.value = quote
+}
+
+function clearQuote() {
+  pendingQuote.value = null
+}
 
   const messages = computed(() => {
     if (!activeSessionId.value) return []
@@ -122,13 +133,14 @@ export const useChatStore = defineStore('chat', () => {
     activeSessionId.value = session.id
   }
 
-  function addUserMessage(sessionId: string, text: string) {
+  function addUserMessage(sessionId: string, text: string, quoted?: QuotedMessage) {
     const session = getOrCreateSession(sessionId)
     session.messages.push({
       id: generateId('msg'),
       role: 'user',
       content: text,
       timestamp: Date.now(),
+      ...(quoted ? { quoted } : {}),
     })
   }
 
@@ -266,7 +278,9 @@ export const useChatStore = defineStore('chat', () => {
     session.runState = 'running'
     session.error = null
 
-    addUserMessage(targetSessionId, text)
+    const quote = pendingQuote.value
+    addUserMessage(targetSessionId, text, quote ?? undefined)
+    pendingQuote.value = null
 
     session.messages.push({
       id: generateId('msg'),
@@ -276,7 +290,10 @@ export const useChatStore = defineStore('chat', () => {
       loading: true,
     })
 
-    gatewayService.sendPrompt(text, targetSessionId, useBotsStore().activeBotId ?? undefined)
+    // The engine has no per-message quote field, so the quote is composed into the
+    // prompt text the model reads; the UI still renders it as a quote bar.
+    const body = quote ? `> 引用 ${quote.authorName}：${quote.text}\n\n${text}` : text
+    gatewayService.sendPrompt(body, targetSessionId, useBotsStore().activeBotId ?? undefined)
   }
 
   function stop() {
@@ -391,6 +408,9 @@ export const useChatStore = defineStore('chat', () => {
     isRunning,
     error,
     pendingApprovals,
+    pendingQuote,
+    setQuote,
+    clearQuote,
     activeSessionId,
     reset,
     setActiveSession,
