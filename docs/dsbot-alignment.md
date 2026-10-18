@@ -123,7 +123,7 @@ Bot 榜（名字 + 职位 + 进度条 + 百分比）→ 模型榜。
 | bot 记忆 | 缺「管理入口 + Markdown 记忆文件」口径 | ✅ 已有 `memory_facts/notes` + 设置 → 记忆页 + 抽屉入口 |
 | 能力（per-bot 启用） | 需要 bot ↔ 能力关联 | ✅ M5 `b603b7c`（`bot_capabilities`，执行处过滤 `mcp__*`） |
 | 用量聚合 | 缺缓存命中率与按时间分桶 | ✅ M5 `8de27e1`（v4 加 `cache_read_tokens`、`by_day`/`by_bot`） |
-| 引用对话 | 消息需要 `quoted` | 🟡 前端可用（引用并入 prompt 文本）；⬜ **服务端持久化待做**——要改运行时消息模型 |
+| 引用对话 | 消息需要 `quoted` | ✅ `8030cb5`：`runtime/quotes.py` 把引用写进用户消息的 `additional_properties`（framework 在 `agent.run()` 内建消息，无钩子，故在 run 后附加，保持单一 transcript）；前端回读并渲染引用块，刷新后仍是引用 |
 | schema 迁移 | 需要 ALTER 迁移器 | ✅ M5 `87c051c`（+ 6 项迁移测试 `e6b31b5`） |
 
 ---
@@ -286,7 +286,6 @@ vitest 102、pytest **282**、`pnpm build-only` 通过。
 
 | 待办 | 为什么值得做 | 落点 |
 |---|---|---|
-| 引用在服务端持久化 | 现在引用并入 prompt 文本，刷新后显示为普通文本而不是引用块 | 运行时消息模型加 `quoted` 字段（`AgentSession` 之外的持久化层），`prompt` RPC 透传 |
 | 群聊里的引用按钮 | 群里长对话更需要引用 | `GroupView` 的消息操作行复用 `MessageItem` 的引用动作，走 `groupMessages` 的 `quoted` |
 | `_FakeClient` 流式文本不产出回复（§6） | 无 API key 时无法目视验证任何 Bot 回复 | `agent_runtime._stream()` 的文本取值口径 |
 | run 事件带 `groupId` | 多个群同时跑时 `sending` 会被别人的 `done` 清掉 | `_emit(... group_id=...)` 已有，把前端匹配逻辑改成按群匹配 |
