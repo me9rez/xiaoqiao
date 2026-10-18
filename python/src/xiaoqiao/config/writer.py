@@ -162,6 +162,23 @@ def _sync_services(doc: Any, settings: Settings) -> None:
         del table[name]
 
 
+def _separate_tables(text: str) -> str:
+    """Make sure every ``[table]`` header starts a new paragraph.
+
+    tomlkit appends a newly created sub-table directly under the previous key, so
+    adding ``[providers.openrouter]`` would otherwise produce
+    ``api_key_env = "..."`` immediately followed by the header.  Idempotent, and
+    it never separates a table from the comment block written right above it.
+    """
+    lines = text.split("\n")
+    out: list[str] = []
+    for line in lines:
+        if line.startswith("[") and out and out[-1].strip() and not out[-1].lstrip().startswith("#"):
+            out.append("")
+        out.append(line)
+    return "\n".join(out)
+
+
 def render(settings: Settings, existing: str = "") -> str:
     """Return the TOML text for ``settings``, merged onto ``existing``."""
     doc = tomlkit.parse(existing) if existing.strip() else tomlkit.parse(_HEADER)
@@ -171,7 +188,7 @@ def render(settings: Settings, existing: str = "") -> str:
     _sync_scalars(doc, settings)
     _sync_permission(doc, settings)
     _sync_services(doc, settings)
-    return tomlkit.dumps(doc)
+    return _separate_tables(tomlkit.dumps(doc))
 
 
 def write_config(settings: Settings, path: Path) -> None:

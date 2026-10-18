@@ -141,30 +141,102 @@ def save(settings: Settings) -> None:
     write_config(settings, config_path())
 
 
-def resolve_api_key(settings: Settings, model: str | None = None) -> str:
-    """Effective API key: provider ``api_key`` > ``api_key_env`` > env table > shell env."""
-    provider = settings.provider(model)
-    if provider is not None:
-        if provider.api_key:
-            return provider.api_key
-        if provider.api_key_env:
-            value = os.environ.get(provider.api_key_env, "").strip()
-            if value:
-                return value
-            logger.warning("api_key_env %s is not set or empty", provider.api_key_env)
-        value = provider.env_value("API_KEY")
+def _provider_key(provider: ProviderSettings, *, warn: bool) -> str:
+    """Key declared on one provider: ``api_key`` > ``api_key_env`` > ``env`` table."""
+    if provider.api_key:
+        return provider.api_key
+    if provider.api_key_env:
+        value = os.environ.get(provider.api_key_env, "").strip()
         if value:
             return value
+        if warn:
+            logger.warning("api_key_env %s is not set or empty", provider.api_key_env)
+    return provider.env_value("API_KEY")
 
+
+def _global_env_key(*, warn: bool) -> str:
+    """Last-resort shell variable (kept for older installs)."""
     global _env_fallback_warned
     for name in _ENV_FALLBACK_VARS:
         value = os.environ.get(name, "").strip()
         if value:
-            if not _env_fallback_warned:
+            if warn and not _env_fallback_warned:
                 _env_fallback_warned = True
                 logger.info("Using %s from the environment; prefer providers.<id>.api_key_env in config.toml", name)
             return value
     return ""
+
+
+def api_key_for_provider(settings: Settings, provider_id: str) -> str:
+    """Effective key for one provider id (no global fallback)."""
+    provider = settings.providers.get(provider_id)
+    return _provider_key(provider, warn=True) if provider is not None else ""
+
+
+def effective_key_for_provider(settings: Settings, provider_id: str) -> str:
+    """Key a request to that provider would actually use (mirrors :func:`build_client`)."""
+    return api_key_for_provider(settings, provider_id) or _global_env_key(warn=False)
+
+
+def resolve_api_key(settings: Settings, model: str | None = None) -> str:
+    """Effective API key: provider ``api_key`` > ``api_key_env`` > env table > shell env."""
+    provider = settings.provider(model)
+    if provider is not None:
+        value = _provider_key(provider, warn=True)
+        if value:
+            return value
+    return _global_env_key(warn=True)
+
+
+def provider_status(settings: Settings, provider_id: str) -> dict[str, Any]:
+    """Where a provider's key comes from right now — the UI shows this verbatim.
+
+    Deliberately silent: this runs on every settings read, so it must not warn.
+    """
+    provider = settings.providers.get(provider_id)
+    if provider is None:
+        return {
+            "api_key_source": "missing",
+            "api_key_env": None,
+            "api_key_env_set": False,
+            "has_key": False,
+            "model_count": 0,
+        }
+    from_file = bool(provider.api_key)
+    env_set = bool(provider.api_key_env and os.environ.get(provider.api_key_env, "").strip())
+    from_env_table = bool(provider.env_value("API_KEY"))
+    if from_file:
+        source = "file"
+    elif env_set or from_env_table:
+        source = "env"
+    else:
+        source = "none"
+    return {
+        "api_key_source": source,
+        "api_key_env": provider.api_key_env,
+        "api_key_env_set": env_set,
+        "has_key": bool(from_file or env_set or from_env_table),
+        "model_count": sum(1 for model in settings.models.values() if model.provider == provider_id),
+    }
+
+
+def config_status(settings: Settings) -> dict[str, Any]:
+    """Runtime facts the settings UI needs but the TOML file cannot express."""
+    alias = settings.default_model
+    model = settings.model(alias)
+    provider_id = model.provider if model is not None else ""
+    has_key = bool(
+        (settings.providers.get(provider_id) and _provider_key(settings.providers[provider_id], warn=False))
+        or _global_env_key(warn=False)
+    )
+    return {
+        "config_path": str(config_path()),
+        "default_model": alias,
+        "default_model_defined": model is not None,
+        "provider": provider_id,
+        "client": "real" if has_key else "fake",
+        "providers": {name: provider_status(settings, name) for name in settings.providers},
+    }
 
 
 def model_config(settings: Settings, model: str | None = None) -> ModelSettings | None:
@@ -254,8 +326,11 @@ def apply_update(settings: Settings, patch: Mapping[str, Any]) -> Settings:
         models: dict[str, ModelSettings] = {}
         for alias, raw in data["models"].items():
             model = model_from_mapping(str(alias), raw)
-            if model is not None:
-                models[str(alias)] = model
+            if model is None:
+                # The whole section is replaced on write, so a skipped entry would
+                # silently delete a model the user still has in config.toml.
+                raise ValueError(f"模型 {alias!r} 缺少 provider 或 model 字段；已拒绝保存以免丢失配置")
+            models[str(alias)] = model
         settings.models = models
     if "thinking" in data:
         settings.thinking = thinking_from_mapping(data["thinking"])
@@ -326,10 +401,16 @@ __all__ = [
     "DEFAULT_MODEL",
     "ModelSettings",
     "Settings",
+    "api_key_for_provider",
+    "apply_update",
     "build_client",
+    "config_status",
     "effective_effort",
+    "effective_key_for_provider",
     "load",
     "model_config",
+    "provider_status",
     "resolve_api_key",
     "save",
+    "to_wire",
 ]

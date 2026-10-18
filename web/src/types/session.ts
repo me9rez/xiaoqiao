@@ -115,6 +115,41 @@ export interface ServiceConfig {
   custom_headers?: Record<string, string>
 }
 
+/** Where a provider's key comes from right now (`getConfigStatus`). */
+export type ApiKeySource = 'file' | 'env' | 'none' | 'missing'
+
+export interface ProviderStatus {
+  api_key_source: ApiKeySource
+  api_key_env: string | null
+  api_key_env_set: boolean
+  has_key: boolean
+  model_count: number
+}
+
+/**
+ * Runtime facts the TOML file cannot express. Kept out of `Settings` on purpose:
+ * that payload mirrors `config.toml` byte for byte, this one describes it.
+ */
+export interface ConfigStatus {
+  config_path: string
+  default_model: string
+  default_model_defined: boolean
+  provider: string
+  /** `fake` means the canned `_FakeClient` answers — no usable key anywhere. */
+  client: 'real' | 'fake'
+  providers: Record<string, ProviderStatus>
+}
+
+/** Result of the `testProvider` probe. */
+export interface ProviderProbe {
+  ok: boolean
+  url?: string
+  status?: number
+  count?: number
+  models?: string[]
+  error?: string
+}
+
 export interface Settings {
   default_model: string
   providers: Record<string, ProviderConfig>

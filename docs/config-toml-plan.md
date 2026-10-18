@@ -542,3 +542,53 @@ os.replace(tmp, path)         # 原子替换，避免半截文件
 
 - `anthropic` 客户端分派（`type` 已就位，`build_client` 目前对非 `openai` 类型记一条 warning 后仍走 OpenAI 兼容客户端）。
 - `settings.json` 计划在下个大版本删除。
+
+---
+
+## 15. 实施记录（2026-10-18，设置页与 config.toml 对齐）
+
+设置页 `/settings/models` 之前只读：`添加 AI 服务` 与 `需自定义配置` 两个按钮没有 handler，provider 卡片不可编辑，
+模型列表来自硬编码的 `defaultSettings`，因此「页面上大部分功能不可用」。本节记录把该页做成 config.toml 真实编辑器的改动。
+
+### 15.1 页面结构（每个字段都标出它在文件里的键）
+
+| 区块 | 对应 config.toml | 可做的事 |
+|---|---|---|
+| AI 服务卡片 | `[providers.<id>]` | 增删 provider；改 `type` / `base_url` / `api_key`（默认打码，可切换显示）/ `api_key_env`；显示密钥来源 |
+| 模型列表 | `[models."<alias>"]` | 增删模型；改 `model` / `display_name` / `max_context_size` / `max_output_size` / `capabilities` / `support_efforts` / `default_effort`；改模型 id 时别名与 `default_model` 同步跟随 |
+| 默认模型与循环控制 | `default_model` + `[loop_control]` | 选默认模型；改 `max_steps_per_turn` / `max_attempts_per_step` / `compaction_max_attempts` |
+| 思考 | `[thinking]` | `enabled`；`effort`（留空＝用每个模型的 `default_effort`） |
+| 辅助能力 | `[services.web_search]` | `provider`（bing/searxng）/ `base_url` / `api_key`；状态由是否填了 key 或实例地址实时算出 |
+| 危险区 | 全部 `api_key` | 清除所有已保存密钥（provider 与 services 一起清，环境变量名保留），清完立即保存 |
+
+### 15.2 新增的两个 RPC
+
+配置页需要「文件里没有」的运行时事实，所以另开两个方法，`getSettings` 的返回值继续与文件一一对应：
+
+- `getConfigStatus` → `{config_path, default_model, default_model_defined, provider, client, providers:{<id>:{api_key_source, api_key_env, api_key_env_set, has_key, model_count}}}`
+  - `client` 为 `fake` 时页面顶部直接提示「回复来自内置的假客户端」，这是原先最容易被误判成「模型不行」的地方。
+  - `api_key_source` ∈ `file` / `env` / `none` / `missing`，对应 config.toml 的 `api_key` > `api_key_env` > `[providers.<id>.env]` 的优先级（实现在 `settings.provider_status()`，刻意不写日志：每次读设置都会调用）。
+- `testProvider {provider}` → `{ok, url, status?, count?, models?, error?}`
+  - 实现是 `GET {base_url}/models`（`anthropic` 走 `/v1/models` + `x-api-key`），不消耗 token，能同时验证「地址对不对」和「key 对不对」。
+  - 实现在 `python/src/xiaoqiao/provider_probe.py`，`probe_provider()` 接受可选 `transport` 便于用 `httpx.MockTransport` 做单测；永不抛异常，失败原因原文回给页面。
+
+### 15.3 顺带修掉的两个数据安全问题
+
+1. **`apply_update` 会静默丢弃模型**：`[models]` 是整段替换的，解析失败的条目原来只记 warning 就跳过，等于把用户文件里的模型删了。现在改为抛 `ValueError`，`updateSettings` 返回错误、页面显示红色横幅、文件不动。
+2. **新表头被粘在上一行**：tomlkit 把新 provider 直接追加在上一节最后一行后面，写出 `api_key_env = "..."` 紧跟 `[models."..."]`。`writer.render()` 末尾加了 `_separate_tables()`：表头前若不是空行且不是注释，就补一个空行。幂等，且不会把表头和它上面的注释块拆开。
+
+### 15.4 验证证据
+
+- `uv run pytest -q` → **281 passed**（新增 `tests/unit/test_settings_ui.py` 13 项：密钥来源矩阵、`apply_update` 严格校验、`probe_provider` 的成功/401/无 key/无 base_url/anthropic 头；`test_config_toml.py` 新增 2 项表头分隔）
+- `pnpm test:unit --run` → **92 passed**（新增 `tests/stores/settings.spec.ts` 8 项：脏标记、保存载荷、增删 provider/模型、改 id 跟随 `default_model`、清密钥、默认模型失效时拒存、放弃修改）
+- `pyright` 0 errors、`ruff check` / `format --check` 干净、`pnpm type-check` 通过
+- **端到端**（真实网关 + 真实 `~/.xiaoqiao/config.toml` + Chromium）：
+  `getConfigStatus` 返回 `client: "fake"`、`api_key_source: "none"`；`testProvider` 返回
+  `{"ok": false, "url": "https://api.deepseek.com/v1/models", "error": "没有可用的 API key…"}`；
+  页面点「添加 AI 服务」→ 填 `tmpcheck` → 保存 → 文件里出现 `[providers.tmpcheck]`（且与上一节之间有空行）→ 删除该服务 → 保存 → 文件回到原样。
+
+### 15.5 遗留
+
+- 图片生成没有后端工具，页面上明确写「暂不提供配置」而不是留一个死按钮。
+- `api_key` 仍以明文经本机 WS 传给页面（沿用「wire 词汇与文件一致」的既定决策）；要遮罩需要引入 `has_api_key` + 「留空表示不修改」的语义，属于后续单独立项。
+- `type` 选 `anthropic` 仍走 OpenAI 兼容客户端（同 §14.4）。

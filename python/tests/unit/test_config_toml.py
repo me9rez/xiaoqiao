@@ -266,6 +266,31 @@ class TestWriter:
         assert leftovers == []
         assert config_path().read_text(encoding="utf-8").endswith("\n")
 
+    def test_new_tables_are_separated_by_a_blank_line(self, state_home: Path) -> None:
+        settings = _sample_settings()
+        write_config(settings, config_path())
+
+        settings.providers["tmpcheck"] = ProviderSettings(base_url="http://127.0.0.1:9/v1", api_key_env="TMP_KEY")
+        write_config(settings, config_path())
+
+        lines = config_path().read_text(encoding="utf-8").splitlines()
+        for index, line in enumerate(lines):
+            if line.startswith("[") and index > 0 and not lines[index - 1].lstrip().startswith("#"):
+                assert lines[index - 1] == "", f"{line} is glued to the line above it"
+
+    def test_table_separation_keeps_comment_blocks(self, state_home: Path) -> None:
+        settings = _sample_settings()
+        config_path().write_text(
+            'default_model = "deepseek/deepseek-v4"\n\n# 说明：我的模型\n[models."deepseek/deepseek-v4"]\n'
+            'provider = "deepseek"\nmodel = "deepseek-v4"\n',
+            encoding="utf-8",
+        )
+
+        write_config(settings, config_path())
+
+        after = config_path().read_text(encoding="utf-8")
+        assert "# 说明：我的模型\n[models." in after
+
 
 def settings_from_mapping_from_text(text: str) -> Settings:
     import tomllib

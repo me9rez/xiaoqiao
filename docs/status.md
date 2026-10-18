@@ -146,6 +146,22 @@ esources/python，wheel 装进它自己的 site-packages；打包版引擎来自
 
 未做：步骤清单的独立编辑 UI、会话页内的「存为定时任务」入口、事件监听的存储合并（仍走 JSON）。
 
+## 设置页对齐 config.toml（2026-10-18）
+
+方案与实施记录见 [config-toml-plan.md](config-toml-plan.md) §15。
+
+| 项 | 状态 |
+|---|---|
+| AI 服务 | ✅ `/settings/models` 可增删 provider，编辑 `type` / `base_url` / `api_key`（打码可切换）/ `api_key_env`（此前「添加 AI 服务」按钮无 handler） |
+| 模型 | ✅ 每个 alias 可展开编辑 `model` / `display_name` / `max_context_size` / `max_output_size` / `capabilities` / `support_efforts` / `default_effort`，可增删；改模型 id 时别名与 `default_model` 同步跟随 |
+| 其余字段 | ✅ `default_model`、`[loop_control]` 三项、`[thinking]`、`[services.web_search]` 均可编辑；每个控件旁标出它在文件里的键 |
+| 可见性 | ✅ 顶部横幅直说「没有可用 API key，回复来自假客户端」；每张卡片显示密钥来源（文件 / 环境变量 / 未找到） |
+| 测试连接 | ✅ 新 RPC `testProvider`：`GET {base_url}/models`，不消耗 token，失败原因原文回显 |
+| 安全 | ✅ `apply_update` 不再静默丢弃解析失败的模型（改为报错拒存）；新表头自动与上一节空行分隔 |
+| 回归 | ✅ pytest **281**、vitest **92**、pyright 0、ruff 干净、`pnpm type-check` 通过；含一次真实网关 + Chromium 的增删 provider 落盘往返 |
+
+未做：`api_key` 仍以明文经本机 WS 传给页面（要遮罩需引入 `has_api_key` + 「留空不改」语义）；图片生成无后端工具，页面上明确标注不提供配置。
+
 未做（方案 §12 明示）：Kimi 的 `managed:` 供应商 / OAuth / `secondary_model` / `hooks` / `background` /
 `database` / `watch` / `tui.toml` / 项目级 `local.toml`；`anthropic` 客户端分派留作后续。
 

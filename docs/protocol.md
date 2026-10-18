@@ -177,6 +177,43 @@ Read or update the active configuration. The payload mirrors `~/.xiaoqiao/config
 (snake_case, models keyed by alias); legacy camelCase keys such as `primaryModel`
 are still accepted on write.
 
+`updateSettings` replaces each section present in `params` wholesale, so the settings page
+always sends the whole document. A `[models]` entry that cannot be parsed (missing
+`provider` or `model`) is rejected with an error instead of being dropped.
+
+#### getConfigStatus
+```json
+{"id":"req-10","method":"getConfigStatus","params":{}}
+```
+Runtime facts the TOML file cannot express — kept out of `getSettings` so that payload
+stays a byte-for-byte mirror of the file:
+
+```json
+{
+  "config_path": "C:\\Users\\me\\.xiaoqiao\\config.toml",
+  "default_model": "deepseek/deepseek-v4-flash",
+  "default_model_defined": true,
+  "provider": "deepseek",
+  "client": "fake",
+  "providers": {
+    "deepseek": {"api_key_source": "none", "api_key_env": "DEEPSEEK_API_KEY",
+                 "api_key_env_set": false, "has_key": false, "model_count": 2}
+  }
+}
+```
+
+`api_key_source` is one of `file` (from `api_key`), `env` (from `api_key_env` or the
+`env` sub-table), `none`, `missing` (provider not in the file). `client` is `fake` when no
+usable key exists anywhere, which means the canned `_FakeClient` answers prompts.
+
+#### testProvider
+```json
+{"id":"req-11","method":"testProvider","params":{"provider":"deepseek"}}
+```
+Calls `GET {base_url}/models` with the provider's key (`anthropic` uses `/v1/models` and
+`x-api-key`) and returns `{ok, url, status?, count?, models?, error?}`. Costs no tokens;
+never raises — failures come back as `{"ok": false, "error": "…"}`.
+
 #### getActivity
 ```json
 {"id":"req-8","method":"getActivity","params":{}}

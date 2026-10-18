@@ -47,6 +47,7 @@ from xiaoqiao.mcp import (
     uninstall_connector,
     update_connector_config,
 )
+from xiaoqiao.provider_probe import probe_provider
 from xiaoqiao.runtime.approvals import ApprovalBroker, approval_to_dict
 from xiaoqiao.runtime.artifacts import ArtifactRepository, artifact_to_dict
 from xiaoqiao.runtime.channels import ChannelRepository, channel_to_dict
@@ -70,7 +71,15 @@ from xiaoqiao.session import (
     start_session_run,
     update_session,
 )
-from xiaoqiao.settings import Settings, apply_update, build_client, effective_effort, split_alias, to_wire
+from xiaoqiao.settings import (
+    Settings,
+    apply_update,
+    build_client,
+    config_status,
+    effective_effort,
+    split_alias,
+    to_wire,
+)
 from xiaoqiao.settings import load as load_settings
 from xiaoqiao.settings import save as save_settings
 from xiaoqiao.skills import (
@@ -700,6 +709,19 @@ class WsGatewayServer:
                         self._send_rpc_response(request_id, to_wire(s))
                     except Exception as exc:
                         logger.exception("updateSettings failed")
+                        self._send_rpc_error(request_id, str(exc))
+                elif method == "getConfigStatus":
+                    try:
+                        self._send_rpc_response(request_id, config_status(load_settings()))
+                    except Exception as exc:
+                        logger.exception("getConfigStatus failed")
+                        self._send_rpc_error(request_id, str(exc))
+                elif method == "testProvider":
+                    try:
+                        provider_id = str(params.get("provider") or "")
+                        self._send_rpc_response(request_id, await probe_provider(load_settings(), provider_id))
+                    except Exception as exc:
+                        logger.exception("testProvider failed")
                         self._send_rpc_error(request_id, str(exc))
                 elif method == "getActivity":
                     try:
