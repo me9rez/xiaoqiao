@@ -240,9 +240,10 @@ vitest 102、pytest **282**、`pnpm build-only` 通过。
 | schema 迁移器 | ✅ `store.MIGRATIONS` + `SCHEMA_VERSION = 3`（给 `bots` 加 `role` / `description`），`init_db` 按版本顺序执行、容忍手工加过列；6 项回归测试 |
 | bot 职位/简介 | ✅ 数据类 → 行映射 → 序列化 → `create`/`update` → `createBot`/`updateBot` → TS 类型 → 侧栏副标题与详情抽屉 → Bot 编辑器输入框 |
 | 群管理员 | ✅ 语义本来就在：`resolve_recipients()` 用 `default_bot_id` 决定谁应答并派活。**没有新增列**，而是把它按产品叫法暴露成 `adminBotId`（同一值），`updateGroup` 接受 `adminBotId`，群行副标题显示「管理员 X · 成员」，群内作者徽标改读它。3 项测试 |
-| 未读计数 | ⬜ 未做 |
+| 未读标记 | ✅ 不做服务端计数：`utils/unread.ts` 记本地「最后打开时间」，`updatedAt` 更新后侧栏显示小圆点（读者属性，不是会话属性） |
 | `UsageTotals` 的 cache token | ✅ schema v4 给 `usage_events` 加 `cache_read_tokens`；`record()`/`summary()` 带它，三条 run 路径都传 `event.cache_read_tokens`；`usageSummary` 输出 `cacheReadTokens`；用量页第二张 KPI 卡改「缓存命中率」（命中 = cacheRead / (input + cacheRead)），输出挪进 token 卡副标题 |
-| 能力 per-bot 启用 + 主 Bot 权限 | ⬜ 未做 |
+| 能力 per-bot | ✅ `bot_capabilities` 表只存「与默认不同」的开关（默认启用，避免老 Bot 突然掉工具）；`_tools_for()` 对关掉的连接器过滤 `mcp__<server>__*` 工具，改开关真的改行为；Bot 编辑器有「能力」分区 |
+| 主 Bot 权限 | ⬜ 未做（谁能派活目前由模型自己 @ 决定，无强制点） |
 
 ---
 
