@@ -4,6 +4,7 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue'
 
 import GroupEditorModal from '@/components/groups/GroupEditorModal.vue'
 import MentionPicker from '@/components/groups/MentionPicker.vue'
+import { useActivityStore } from '@/stores/activity'
 import { useBotsStore } from '@/stores/bots'
 import { useGroupsStore } from '@/stores/groups'
 import type { Bot } from '@/types/bot'
@@ -13,6 +14,7 @@ const props = defineProps<{ groupId: string }>()
 
 const botsStore = useBotsStore()
 const groupsStore = useGroupsStore()
+const activityStore = useActivityStore()
 
 const editorOpen = ref(false)
 const draft = ref('')
@@ -21,6 +23,21 @@ const listEl = ref<HTMLElement | null>(null)
 const group = computed(() => groupsStore.groups.find((item) => item.id === props.groupId) ?? null)
 const members = computed(() => botsStore.bots.filter((bot) => group.value?.botIds.includes(bot.id)))
 const messages = computed(() => groupsStore.messagesFor(props.groupId))
+
+/**
+ * Who is actually working right now. "Bot 正在回复…" is not wrong but it hides the
+ * useful part — in a group you want to know *which* bot picked it up.
+ */
+const workingMembers = computed(() =>
+  members.value.filter((bot) => activityStore.stateOf(bot.id) === 'working'),
+)
+
+const progressLabel = computed(() => {
+  const names = workingMembers.value.map((bot) => bot.name)
+  if (names.length === 0) return 'Bot 正在回复…'
+  if (names.length === 1) return `${names[0]} 正在回复…`
+  return `${names.slice(0, 2).join('、')}${names.length > 2 ? ` 等 ${names.length} 个 Bot` : ''} 正在回复…`
+})
 
 const mentionQuery = computed(() => {
   const match = draft.value.match(/@([^\s@]*)$/)
@@ -186,13 +203,24 @@ onMounted(() => {
           </div>
         </template>
 
-        <div v-if="groupsStore.sending" class="flex items-center gap-2 text-[12px] text-[var(--color-text-muted)]">
+        <div
+          v-if="groupsStore.sending"
+          class="flex items-center gap-2 text-[12px] text-[var(--color-text-muted)]"
+          role="status"
+        >
+          <span class="flex -space-x-1" aria-hidden="true">
+            <span
+              v-for="bot in workingMembers.slice(0, 3)"
+              :key="bot.id"
+              class="flex h-5 w-5 items-center justify-center rounded-full border-[0.5px] border-[var(--color-line)] bg-[var(--color-surface-raised)] text-[10px]"
+            >{{ bot.emoji || '🤖' }}</span>
+          </span>
           <span class="flex items-center gap-1" aria-hidden="true">
             <span class="w-1 h-1 rounded-full bg-[var(--color-text-faint)] animate-bounce [animation-delay:0ms] motion-reduce:animate-none" />
             <span class="w-1 h-1 rounded-full bg-[var(--color-text-faint)] animate-bounce [animation-delay:150ms] motion-reduce:animate-none" />
             <span class="w-1 h-1 rounded-full bg-[var(--color-text-faint)] animate-bounce [animation-delay:300ms] motion-reduce:animate-none" />
           </span>
-          <span>Bot 正在回复…</span>
+          <span>{{ progressLabel }}</span>
         </div>
       </div>
     </div>
