@@ -1,30 +1,81 @@
 <script setup lang="ts">
-import { CheckCircle2, ChevronDown, ChevronRight, ExternalLink, Folder, FolderOpen, History, List, Lightbulb, Package, Wrench } from '@lucide/vue'
+import { BookOpen, CalendarClock, ChevronDown, ExternalLink, Folder, FolderOpen, History, List, Package, Wrench } from '@lucide/vue'
 import { computed, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
+import ModelPicker from '@/components/chat/ModelPicker.vue'
 import { useArtifactsStore } from '@/stores/artifacts'
 import { useBotsStore } from '@/stores/bots'
 import { useChatStore } from '@/stores/chat'
+import { useMemoryStore } from '@/stores/memory'
+import { useRoutinesStore } from '@/stores/routines'
+import { useSettingsStore } from '@/stores/settings'
+import { useUsageStore } from '@/stores/usage'
 import { useWorkspaceStore } from '@/stores/workspace'
 
 const chatStore = useChatStore()
 const workspaceStore = useWorkspaceStore()
 const artifactsStore = useArtifactsStore()
 const botsStore = useBotsStore()
+const settingsStore = useSettingsStore()
+const memoryStore = useMemoryStore()
+const usageStore = useUsageStore()
+const routinesStore = useRoutinesStore()
+const router = useRouter()
 
 const progressExpanded = ref(true)
 const workspaceExpanded = ref(true)
 const artifactsExpanded = ref(true)
 const opsExpanded = ref(true)
 
+const bot = computed(() => botsStore.activeBot)
+const isMainBot = computed(() => Boolean(bot.value && botsStore.bots[0]?.id === bot.value.id))
+/** The bot's own model wins; older bots fall back to `default_model`. */
+const botModel = computed(() => bot.value?.model || settingsStore.settings.default_model)
+
+const memoryCount = computed(() => memoryStore.facts.length + memoryStore.notes.length)
+const usageTotals = computed(() => usageStore.summary?.window)
+const botRoutines = computed(() => routinesStore.routines.filter((routine) => routine.botId === bot.value?.id))
+
+function formatTokens(value: number): string {
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`
+  if (value >= 1000) return `${(value / 1000).toFixed(1)}K`
+  return String(value)
+}
+
+async function loadBotPanels(botId: string | undefined): Promise<void> {
+  if (!botId) return
+  await Promise.all([
+    memoryStore.load(botId),
+    usageStore.load(1, botId),
+    routinesStore.routines.length === 0 ? routinesStore.load() : Promise.resolve(),
+  ])
+}
+
+async function onModelChange(alias: string): Promise<void> {
+  if (!alias || !bot.value) return
+  await botsStore.update(bot.value.id, { model: alias })
+  await settingsStore.setDefaultModel(alias)
+}
+
+function go(to: string): void {
+  void router.push(to)
+}
+
 onMounted(() => {
   artifactsStore.listen()
-  if (botsStore.activeBotId) void artifactsStore.load(botsStore.activeBotId)
+  if (botsStore.activeBotId) {
+    void artifactsStore.load(botsStore.activeBotId)
+    void loadBotPanels(botsStore.activeBotId)
+  }
 })
 
 watch(
   () => botsStore.activeBotId,
   (botId) => {
-    if (botId) void artifactsStore.load(botId)
+    if (botId) {
+      void artifactsStore.load(botId)
+      void loadBotPanels(botId)
+    }
   },
 )
 
@@ -58,7 +109,58 @@ const toolUsage = computed(() => {
 </script>
 
 <template>
-  <aside class="h-full w-72 flex-shrink-0 border-l border-[var(--border)] bg-[var(--bg-page)] flex flex-col overflow-y-auto">
+  <aside class="h-full w-72 flex-shrink-0 border-l border-[var(--color-line)] bg-[var(--color-bg)] flex flex-col overflow-y-auto">
+    <!-- Bot 详情 -->
+    <div v-if="bot" class="border-b-[0.5px] border-[var(--color-line)] px-4 pb-3 pt-5">
+      <div class="flex flex-col items-center gap-1">
+        <span class="text-[36px] leading-none select-none" aria-hidden="true">{{ bot.emoji || '🤖' }}</span>
+        <span class="mt-1 text-[15px] font-medium text-[var(--color-text-strong)]">{{ bot.name }}</span>
+        <span class="text-[12px] text-[var(--color-text-faint)]">{{ isMainBot ? '主 Bot' : (bot.model || '未指定模型') }}</span>
+      </div>
+
+      <div class="mt-3 space-y-2">
+        <!-- 模型 -->
+        <div>
+          <p class="mb-1 text-[12px] text-[var(--color-text-muted)]">模型</p>
+          <ModelPicker :value="botModel" @change="onModelChange" />
+        </div>
+
+        <!-- 记忆 -->
+        <button
+          type="button"
+          class="flex w-full items-center gap-2 rounded-[var(--radius-md)] border-[0.5px] border-[var(--color-line)] px-3 py-2 text-[13px] text-[var(--color-text)] transition hover:bg-[var(--color-hover)]"
+          @click="go('/settings/memory')"
+        >
+          <BookOpen class="h-3.5 w-3.5 text-[var(--color-text-muted)]" />
+          <span>记忆</span>
+          <span class="ml-auto text-[12px] text-[var(--color-text-muted)]">{{ memoryCount }} 条</span>
+          <span class="text-[12px] text-[var(--color-text-faint)]">管理 ›</span>
+        </button>
+
+        <!-- 用量 -->
+        <div class="flex items-center gap-2 rounded-[var(--radius-md)] border-[0.5px] border-[var(--color-line)] px-3 py-2 text-[13px]">
+          <span class="text-[var(--color-text)]">用量</span>
+          <span v-if="usageTotals" class="ml-auto text-[12px] text-[var(--color-text-muted)]">
+            {{ formatTokens(usageTotals.totalTokens) }} tok · {{ usageTotals.runs }} 次
+          </span>
+          <span v-else class="ml-auto text-[12px] text-[var(--color-text-faint)]">暂无</span>
+        </div>
+
+        <!-- 定时任务 -->
+        <button
+          type="button"
+          class="flex w-full items-center gap-2 rounded-[var(--radius-md)] border-[0.5px] border-[var(--color-line)] px-3 py-2 text-[13px] text-[var(--color-text)] transition hover:bg-[var(--color-hover)]"
+          @click="go('/routines')"
+        >
+          <CalendarClock class="h-3.5 w-3.5 text-[var(--color-text-muted)]" />
+          <span>定时任务</span>
+          <span class="ml-auto text-[12px] text-[var(--color-text-muted)]">
+            {{ botRoutines.length ? `${botRoutines.length} 个` : '去添加 ›' }}
+          </span>
+        </button>
+      </div>
+    </div>
+
     <!-- 进度 -->
     <div class="border-b border-[var(--border)]">
       <button

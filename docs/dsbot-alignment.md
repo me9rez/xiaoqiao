@@ -196,6 +196,23 @@ vitest 102、pytest **282**、`pnpm build-only` 通过。
 **未验证**：bot 气泡的作者行与 @ 胶囊——本机没有 API key，假客户端的流式文本没有变成回复
 （`turn_end reason=complete` 但 `turn_text` 为空），需要真实模型才能看到；见 §6。
 
+### M3 bot 详情（2026-10-18）
+
+`web/src/components/chat/ContextPanel.vue` 顶部新增 Bot 详情区（对齐 `details.zh.png` 的分区与文案）：
+
+| 区块 | 内容 | 数据源 |
+|---|---|---|
+| 身份 | 大 emoji + 名字 + 「主 Bot / 模型名」 | `botsStore.activeBot` |
+| 模型 | `ModelPicker` 直接嵌在卡片里，切换会同时写 bot 的 `model` 与 `default_model` | `botsStore.update` + `settingsStore.setDefaultModel` |
+| 记忆 | `N 条` + `管理 ›` → `/settings/memory` | `useMemoryStore.facts + notes` |
+| 用量 | `12.3K tok · 8 次`（空态「暂无」） | `useUsageStore.summary.window`（按 bot 过滤） |
+| 定时任务 | `N 个` 或「去添加 ›」→ `/routines` | `useRoutinesStore` 按 botId 过滤 |
+
+原有的「进度 / 工作区 / 产物 / 操作记录」四段保留在下面，没有为了对齐而删功能。
+未做：参考实现的 `详情 | 浏览器` 页签（浏览器子面板依赖 dsh 的 browser 插件，见 §7）、「缓存命中 %」（`UsageTotals` 没有 cache token 字段，需 M5 补）。
+
+回归：`vue-tsc --build` 0 错误、vitest 102、Chromium 截图核对。
+
 ---
 
 ## 6. 已知问题
