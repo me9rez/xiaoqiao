@@ -19,7 +19,21 @@ from xiaoqiao.paths import config_dir
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
+
+#: Forward-only migrations, applied in order when the stored version is lower.
+#: ``CREATE TABLE IF NOT EXISTS`` cannot add a column to an existing table, so any
+#: change to a table that already shipped has to come through here.
+MIGRATIONS: tuple[tuple[int, str], ...] = (
+    (
+        3,
+        "ALTER TABLE bots ADD COLUMN role TEXT NOT NULL DEFAULT ''",
+    ),
+    (
+        3,
+        "ALTER TABLE bots ADD COLUMN description TEXT NOT NULL DEFAULT ''",
+    ),
+)
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -277,11 +291,21 @@ def connect(path: str | Path | None = None) -> Iterator[sqlite3.Connection]:
 
 
 def init_db(path: str | Path | None = None) -> None:
-    """Create the schema if needed and record the current version."""
+    """Create the schema if needed, then run any pending migrations."""
     with connect(path) as conn:
         conn.executescript(SCHEMA_SQL)
         row = conn.execute("SELECT MAX(version) AS version FROM schema_migrations").fetchone()
         current = row["version"] if row and row["version"] is not None else 0
+        for version, statement in MIGRATIONS:
+            if version <= current:
+                continue
+            try:
+                conn.execute(statement)
+            except sqlite3.OperationalError as exc:
+                # Already applied by hand or by a partially recorded run.
+                if "duplicate column name" not in str(exc).lower():
+                    raise
+                logger.debug("Migration for v%s skipped: %s", version, exc)
         if current < SCHEMA_VERSION:
             conn.execute(
                 "INSERT OR REPLACE INTO schema_migrations(version, applied_at) VALUES (?, datetime('now'))",
