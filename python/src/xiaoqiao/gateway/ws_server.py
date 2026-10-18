@@ -57,6 +57,8 @@ from xiaoqiao.runtime.group_chat import GroupChatService, render_group_context
 from xiaoqiao.runtime.group_messages import GroupMessageRepository, message_to_dict
 from xiaoqiao.runtime.instance_lock import SCHEDULER_PORT, EngineSlot
 from xiaoqiao.runtime.memory import MemoryRepository, fact_to_dict, note_to_dict
+from xiaoqiao.runtime.quotes import attach_quote
+from xiaoqiao.runtime.quotes import quote_param as _quote_param
 from xiaoqiao.runtime.routines import RoutineRepository, routine_to_dict
 from xiaoqiao.runtime.runs import RunRepository
 from xiaoqiao.runtime.session_memory import format_note, summarize_session
@@ -631,7 +633,12 @@ class WsGatewayServer:
                         self._current_tasks[group_id] = asyncio.create_task(self._handle_group_prompt(group_id, text))
                     else:
                         self._current_tasks[session_id] = asyncio.create_task(
-                            self._handle_prompt(text, session_id, bot_id)
+                            self._handle_prompt(
+                                text,
+                                session_id,
+                                bot_id,
+                                _quote_param(params.get("quoted")),
+                            )
                         )
                 elif method == "cancel":
                     session_id = params.get("sessionId", "")
@@ -1426,7 +1433,13 @@ class WsGatewayServer:
             if self._ws is ws:
                 self._ws = None
 
-    async def _handle_prompt(self, text: str, session_id: str = "", bot_id: str = "") -> None:
+    async def _handle_prompt(
+        self,
+        text: str,
+        session_id: str = "",
+        bot_id: str = "",
+        quoted: dict[str, Any] | None = None,
+    ) -> None:
         from xiaoqiao.mcp import format_mcp_tools_for_prompt
         from xiaoqiao.system_prompt import (
             BuildSystemPromptOptions,
@@ -1571,6 +1584,8 @@ class WsGatewayServer:
                 del self._current_tasks[session.id]
             session = end_session_run(session.id, error=error_occurred) or session
             self._session = session
+            if quoted:
+                attach_quote(session.messages, quoted)
             save_session(session)
             self._record_session_memory(bot.id, session.id, session.messages)
 

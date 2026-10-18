@@ -109,6 +109,15 @@ function formatTime(timestamp?: number) {
         {{ message.thinking }}
       </div>
 
+      <!-- 引用 -->
+      <div
+        v-if="message.quoted"
+        class="mb-1.5 border-l-2 border-[var(--color-accent)] pl-2 text-[12px] leading-relaxed"
+      >
+        <span class="text-[var(--color-text-muted)]">引用 {{ message.quoted.authorName }}</span>
+        <p class="truncate text-[var(--color-text-faint)]">{{ message.quoted.text }}</p>
+      </div>
+
       <!-- 工具调用 -->
       <ToolCallBlock v-if="message.role === 'tool'" :message="message" />
 

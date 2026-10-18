@@ -293,7 +293,7 @@ function clearQuote() {
     // The engine has no per-message quote field, so the quote is composed into the
     // prompt text the model reads; the UI still renders it as a quote bar.
     const body = quote ? `> 引用 ${quote.authorName}：${quote.text}\n\n${text}` : text
-    gatewayService.sendPrompt(body, targetSessionId, useBotsStore().activeBotId ?? undefined)
+    gatewayService.sendPrompt(body, targetSessionId, useBotsStore().activeBotId ?? undefined, quote ?? undefined)
   }
 
   function stop() {
@@ -445,10 +445,19 @@ interface BackendMessage {
   additional_properties?: Record<string, unknown>
 }
 
+function readQuoted(raw: unknown): QuotedMessage | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const value = raw as Record<string, unknown>
+  const authorName = typeof value.authorName === 'string' ? value.authorName : ''
+  const text = typeof value.text === 'string' ? value.text : ''
+  if (!authorName && !text) return undefined
+  return { authorName: authorName || '未署名', text }
+}
+
 export function convertBackendMessages(msgs: BackendMessage[]): UiMessage[] {
   const result: UiMessage[] = []
   const toolMessages = new Map<string, UiMessage>()
-  let textSegment: { role: string; content: string; thinking?: string } | null = null
+  let textSegment: { role: string; content: string; thinking?: string; quoted?: QuotedMessage } | null = null
 
   function flushText() {
     if (!textSegment) return
@@ -464,6 +473,7 @@ export function convertBackendMessages(msgs: BackendMessage[]): UiMessage[] {
       content: textSegment.content,
       timestamp: Date.now(),
       thinking: textSegment.thinking,
+      ...(textSegment.quoted ? { quoted: textSegment.quoted } : {}),
     })
     textSegment = null
   }
@@ -474,21 +484,24 @@ export function convertBackendMessages(msgs: BackendMessage[]): UiMessage[] {
       : typeof msg.additional_properties?.thinking === 'string'
         ? msg.additional_properties.thinking
         : undefined
+    // The gateway stores a quoted reply on the user message's additional_properties.
+    const quoted = readQuoted(msg.additional_properties?.quoted)
 
+    const quotedForTurn = msg.role === 'user' ? quoted : undefined
     let emittedThinking = false
     const hasTextContent = msg.contents.some(isTextContent)
     if (thinking && !textSegment && msg.role === 'assistant' && !hasTextContent) {
-      textSegment = { role: msg.role, content: '', thinking }
+      textSegment = { role: msg.role, content: '', thinking, quoted: quotedForTurn }
       emittedThinking = true
     }
 
     for (const content of msg.contents) {
       if (isTextContent(content)) {
         if (!textSegment) {
-          textSegment = { role: msg.role, content: '', thinking }
+          textSegment = { role: msg.role, content: '', thinking, quoted: quotedForTurn }
         } else if (textSegment.role !== msg.role) {
           flushText()
-          textSegment = { role: msg.role, content: '', thinking }
+          textSegment = { role: msg.role, content: '', thinking, quoted: quotedForTurn }
         }
         textSegment.content += content.text ?? ''
         continue
@@ -558,7 +571,7 @@ export function convertBackendMessages(msgs: BackendMessage[]): UiMessage[] {
     }
 
     if (!emittedThinking && thinking && !textSegment && msg.role === 'assistant') {
-      textSegment = { role: msg.role, content: '', thinking }
+      textSegment = { role: msg.role, content: '', thinking, quoted: quotedForTurn }
     }
     flushText()
   }

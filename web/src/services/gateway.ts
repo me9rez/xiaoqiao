@@ -178,10 +178,13 @@ export class GatewayService {
     }
   }
 
-  sendPrompt(text: string, sessionId?: string, botId?: string): void {
+  sendPrompt(text: string, sessionId?: string, botId?: string, quoted?: { authorName: string; text: string }): void {
     const params: Record<string, string> = { text }
     if (sessionId) params.sessionId = sessionId
     if (botId) params.botId = botId
+    if (quoted) {
+      ;(params as Record<string, unknown>).quoted = quoted
+    }
     this.send(JSON.stringify({ method: 'prompt', params }))
   }
 
